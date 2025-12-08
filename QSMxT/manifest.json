@@ -1,0 +1,86 @@
+{
+  "name": "qsmxt",
+  "label": "QSMxT for Automated Quantitative Susceptibility Mapping",
+  "description": "QSMxT is an end-to-end pipeline for Quantitative Susceptibility Mapping (QSM).",
+  "author": "Ashley Stewart",
+  "maintainer": "NACC <nacchelp@uw.edu>",
+  "cite": " Stewart, SW, Robinson, SD, O'Brien, K, et al. QSMxT: Robust masking and artifact reduction for quantitative susceptibility mapping. Magn Reson Med. 2022; 87: 1289-1300. doi:10.1002/mrm.29048 ",
+  "url": "https://github.com/QSMxT/QSMxT",
+  "source": "https://github.com/QSMxT/qsmxt-flywheel",
+  "license": "GPL-3.0",
+  "version": "qsmxt_8.1.3_3",
+  "environment": {
+    "PATH": "/opt/miniconda-4.12.0/bin:/opt/ants-2.4.3/bin:/opt/ants-2.4.3/Scripts:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/FastSurfer:/opt/miniconda-latest/bin:/opt/bru2:/opt/julia-1.9.3/bin:/opt/node-v14.17.0-linux-x64/bin",
+    "SUBJECTS_DIR": "/tmp",
+    "JULIA_DEPOT_PATH": "~/.julia:/opt/julia_depot",
+    "FASTSURFER_HOME": "/opt/FastSurfer",
+    "ANTSPATH": "/opt/ants-2.4.3/bin",
+    "FLYWHEEL": "/flywheel/v0/",
+    "LANG": "C.UTF-8",
+    "DEBIAN_FRONTEND": "noninteractive",
+    "CONDA_DIR": "/opt/miniconda-4.12.0",
+    "DEPLOY_BINS": "python3:python:nii2dcm:nextqsm:nipypecli:bet:dcm2niix:Bru2:Bru2Nii:julia:qsmxt:dicom-convert:nifti-convert",
+    "LC_ALL": "C.UTF-8",
+    "PWD": "/opt",
+    "DEPLOY_PATH": "/opt/ants-2.4.3/bin:/opt/FastSurfer:/opt/QSMxT-UI",
+    "ND_ENTRYPOINT": "/neurodocker/startup.sh",
+    "LD_LIBRARY_PATH": "/opt/ants-2.4.3/lib:",
+    "TZ": "UTC"
+  },
+  "custom": {
+    "gear-builder": {
+      "category": "analysis",
+      "image": "naccdata.flywheel.io/qsmxt_flywheel_8.1.3_3"
+    },
+    "flywheel": {
+      "suite": "QSMxT"
+    }
+  },
+  "config": {
+    "premade": {
+      "description": "Premade pipeline; 'gre' uses sensible default for 3D-GRE acquisitions; 'epi' uses sensible defaults for 3D-EPI acquisitions (human brain only); 'bet' uses a standard BET-masking approach (human brain only); 'fast' uses a series of fast QSM algorithms; 'body' uses sensible defaults for body imaging applications; 'nextqsm' uses the suggested settings for the NeXtQSM model.",
+      "type": "string",
+      "default": "gre",
+      "enum": [
+        "gre",
+        "epi",
+        "bet",
+        "fast",
+        "body",
+        "nextqsm"
+      ]
+    },
+    "qsm_protocol_pattern": {
+      "description": "Pattern used to identify protocol names intended for QSM reconstruction. By default, ALL acquisitions are considered QSM. If your DICOMs contain non-QSM images, you MUST specify which protocol is intended for QSM using this pattern.",
+      "type": "string",
+      "default": "*"
+    },
+    "qsmxt_cmd_args": {
+      "description": "Specify additional command-line arguments for QSMxT",
+      "type": "string",
+      "default": ""
+    }
+  },
+  "inputs": {
+    "input_file": {
+      "base": "file",
+      "type": {
+        "enum": [
+          "dicom"
+        ]
+      },
+      "description": "QSM image (in a compressed .ZIP folder)"
+    },
+    "anatomical": {
+      "base": "file",
+      "type": {
+        "enum": [
+          "dicom"
+        ]
+      },
+      "optional": true,
+      "description": "Anatomical image for tabular results"
+    }
+  },
+  "command": "python3 /flywheel/v0/run.py"
+}
