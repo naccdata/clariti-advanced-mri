@@ -35,16 +35,33 @@ class FlywheelConnector:
     """
     FlywheelConnector
     ------------------
-    Provides a combined wrapper around the Flywheel REST API (via FWClient)
-    and the official Flywheel Python SDK. This class simplifies the process of:
+    Provides a convenience wrapper around:
 
-      Authenticating using an API key  
-      Locating and selecting a Flywheel project  
-      Iterating subjects, sessions, acquisitions, and files  
-      Storing lists of retrieved image or session objects  
-      
-    The intent is to centralize and abstract Flywheel interactions so higher-level
-    classes such as UploadImageData do not need to manage API calls directly.
+      • The Flywheel REST API client (FWClient)
+      • The official Flywheel Python SDK (flywheel.Client)
+
+    It centralizes retrieval and iteration over projects, subjects, sessions,
+    acquisitions, and file objects.
+
+    Parameters
+    ----------
+    api_key : str
+        A valid Flywheel API key used for authentication.
+
+    Attributes
+    ----------
+    APIKey : str
+        Stored Flywheel API token.
+    RestClient : FWClient
+        Wrapper around Flywheel REST API.
+    SDKClient : flywheel.Client
+        Official Flywheel SDK client.
+    project : flywheel.Project or None
+        Selected project object after calling `setProject`.
+    imageList : List
+        Collected list of file objects from acquisitions.
+    sessionList : List
+        Collected list of session objects.
     """
 
     def __init__(self, api_key: str):
@@ -58,7 +75,26 @@ class FlywheelConnector:
         self.sessionList: List = []
 
     def setProject(self, project_name: str) -> None:
-        """Locate Flywheel project by prefix match."""
+        """
+        Locate and set the Flywheel project matching a prefix string.
+
+        Parameters
+        ----------
+        project_name : str
+            Prefix of the Flywheel project label. The first matching project
+            returned by the REST API list will be selected.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        Exception
+            If project listing or retrieval fails.
+        ValueError
+            If no project label begins with the provided prefix.
+        """
         try:
             project_list = self.RestClient.get("/api/projects")
         except Exception as e:
@@ -78,7 +114,20 @@ class FlywheelConnector:
         raise ValueError(f"No project found starting with '{project_name}'")
 
     def CollectImageInformation(self) -> None:
-        """Collect file objects from all acquisitions in the selected project."""
+        """
+        Collect all Flywheel file objects from every acquisition in the project.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If no project has been initialized.
+        Exception
+            If any SDK iteration fails.
+        """
         if not self.project:
             raise RuntimeError("Project not initialized before image collection.")
 
@@ -94,7 +143,20 @@ class FlywheelConnector:
             raise
 
     def CollectSessionInformation(self) -> None:
-        """Collect a list of session objects from every subject."""
+        """
+        Collect all session objects from every subject in the selected project.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If project is not set.
+        Exception
+            If SDK traversal fails.
+        """
         if not self.project:
             raise RuntimeError("Project not initialized before session collection.")
 
@@ -116,18 +178,31 @@ class UploadImageData:
     """
     UploadImageData
     ----------------
-    Handles ingestion and upload of DICOM files stored in a structured ZIP archive.
+    Responsible for uploading DICOMs from an input ZIP file to Flywheel.  
+    Files are grouped by SeriesInstanceUID and uploaded as per-series ZIPs.
 
-    Responsibilities:
-       Open and read archive files (ZIP format)  
-       Extract and parse DICOM metadata necessary to group files correctly  
-       Group DICOMs into Flywheel acquisitions based on SeriesInstanceUID  
-       Re-compress files into per-series ZIP archives for upload  
-       Create missing subjects, sessions, and acquisitions in Flywheel  
-       Upload ZIP bundles with metadata to Flywheel  
+    Parameters
+    ----------
+    fc : FlywheelConnector
+        Initialized FlywheelConnector instance with project selected.
+    fileSpec : str
+        Path to the ZIP archive containing DICOM files.
 
-    This class abstracts all logic related to reading and organizing DICOMs
-    so the FlywheelConnector only handles connectivity and project lookup.
+    Attributes
+    ----------
+    fc : FlywheelConnector
+        Connector used for Flywheel operations.
+    fileSpec : str
+        Provided ZIP file path.
+    zip : zipfile.ZipFile
+        Opened ZIP archive.
+    baseName : str
+        Base name of the input archive (without extension).
+
+    Raises
+    ------
+    Exception
+        If the ZIP archive cannot be opened.
     """
 
     def __init__(self, fc: FlywheelConnector, fileSpec: str):
@@ -143,13 +218,35 @@ class UploadImageData:
         self.baseName, _ = path.splitext(path.basename(fileSpec))
 
     def uploadImages(self, segIndex: int) -> None:
-        """Extract DICOMs, group by subject/SUID, zip files, and upload to Flywheel."""
+        """
+        Extract, group, package, and upload DICOMs to Flywheel.
 
+        Workflow:
+        1. Identify subject folders containing NACC IDs.
+        2. Group DICOMs by SeriesInstanceUID.
+        3. Extract grouped files to temporary directory.
+        4. Create ZIP archives per series.
+        5. Ensure subject/session/acquisition exist in Flywheel.
+        6. Upload each ZIP to Flywheel with metadata.
+
+        Parameters
+        ----------
+        segIndex : int
+            Index of the path segment containing the subject label.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        Exception
+            On DICOM metadata read failure or Flywheel upload issues.
+        """
         acqList: Dict[str, List[str]] = {}
 
         logger.info("Scanning archive for DICOM files…")
 
-        # Group files by subject NACC ID
         try:
             for f in self.zip.namelist():
                 _, ext = path.splitext(f)
@@ -170,7 +267,6 @@ class UploadImageData:
 
         logger.info(f"Found {len(acqList)} subjects in archive.")
 
-        # Process each subject block
         for subject_label, file_list in acqList.items():
             logger.info(f"Processing subject {subject_label} with {len(file_list)} files…")
 
@@ -196,7 +292,6 @@ class UploadImageData:
                     logger.error(f"Metadata extraction failure for subject {subject_label}: {e}")
                     continue
 
-                # Upload each series as a zip
                 for suid, file_group in zipFiles.items():
                     try:
                         first_file = file_group[0]
@@ -210,7 +305,6 @@ class UploadImageData:
 
                         logger.info(f"Packaging series {series_no} -> {zipPath}")
 
-                        # Create compressed archive
                         with zipfile.ZipFile(zipPath, "w") as zf:
                             for f in file_group:
                                 zf.write(path.join(tmpDir, f), path.basename(f))
@@ -220,7 +314,6 @@ class UploadImageData:
                         session_label = f"{date_str}_MRI"
                         acquisition_label = segments[segIndex + 1]
 
-                        # Ensure Flywheel objects exist
                         subject = self.fc.project.subjects.find_first(f"label={subject_label}")
                         if not subject:
                             logger.info(f"Creating new subject: {subject_label}")
@@ -236,7 +329,6 @@ class UploadImageData:
                             logger.info(f"Creating acquisition: {acquisition_label}")
                             acquisition = session.add_acquisition(label=acquisition_label)
 
-                        # Upload
                         logger.info(f"Uploading {zipFileName}…")
                         acquisition.upload_file(zipPath, metadata={"type": "dicom"})
 
@@ -255,10 +347,22 @@ class Config:
     """
     Config
     ------
-    Simple utility class for loading JSON configuration files.
-    Used primarily to retrieve:
-       APIKey - Flywheel API authorization token  
-       project - project label prefix for automatic project selection  
+    Wrapper for reading JSON configuration that supplies Flywheel credentials.
+
+    Parameters
+    ----------
+    fileSpec : str
+        Path to the JSON config file.
+
+    Attributes
+    ----------
+    config : dict
+        Parsed JSON configuration.
+
+    Raises
+    ------
+    Exception
+        If file cannot be read or parsed.
     """
 
     def __init__(self, fileSpec: str):
@@ -270,7 +374,19 @@ class Config:
             raise
 
     def get(self, target: str) -> Optional[str]:
-        """Retrieve a config field by name."""
+        """
+        Return a configuration value by key.
+
+        Parameters
+        ----------
+        target : str
+            Key to retrieve from configuration.
+
+        Returns
+        -------
+        Optional[str]
+            The retrieved value, or None if the key is missing.
+        """
         return self.config.get(target)
 
 
@@ -279,6 +395,27 @@ class Config:
 ###############################################################################
 
 def main() -> None:
+    """
+    Entry point for the LONI → Flywheel upload tool.
+
+    Parses command-line arguments, loads configuration,
+    initializes FlywheelConnector, and uploads DICOMs.
+
+    Command-Line Arguments
+    ----------------------
+    -f / --file : str (required)
+        Path to ZIP archive of DICOMs.
+    -s / --segIndex : int (optional)
+        Index of path segment containing subject label in filenames.
+
+    Returns
+    -------
+    None
+
+    Exit Codes
+    ----------
+    1 : Missing configuration, project not found, upload failure.
+    """
     parser = argparse.ArgumentParser(description="LONI to Flywheel upload tool")
     parser.add_argument("-f", "--file", required=True, help="Archive file name (zip)")
     parser.add_argument("-s", "--segIndex", help="Path segment containing NACC ID")
