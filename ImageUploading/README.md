@@ -44,3 +44,8 @@ Intended Use
 Output ZIPs are generated in a temporary directory and cleaned up post-run.
 
 Script is safe for batch execution.
+
+Testing
+  Download a collection of know image send as a zipfile
+  Execute script to execute the upload
+  This should include adding to existing session
