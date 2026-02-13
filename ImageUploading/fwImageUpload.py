@@ -37,8 +37,8 @@ class FlywheelConnector:
     ------------------
     Provides a convenience wrapper around:
 
-      • The Flywheel REST API client (FWClient)
-      • The official Flywheel Python SDK (flywheel.Client)
+       The Flywheel REST API client (FWClient)
+       The official Flywheel Python SDK (flywheel.Client)
 
     It centralizes retrieval and iteration over projects, subjects, sessions,
     acquisitions, and file objects.
