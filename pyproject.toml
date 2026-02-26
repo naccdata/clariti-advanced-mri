@@ -31,7 +31,7 @@ target-version = "py311"
 select = ["A", "B", "E", "W", "F", "I", "RUF", "SIM", "C90", "PLW0406", "COM818", "SLF001"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["ImageUploading/tests", "QSMxT/tests"]
 python_files = ["test_*.py"]
 addopts = [
     "--cov=ImageUploading",
