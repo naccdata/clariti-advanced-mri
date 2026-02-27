@@ -18,7 +18,7 @@ from fwImageUpload import FlywheelConnector  # noqa: E402
 
 
 class MockMeta:
-    """Mock pydicom metadata"""
+    """Mock pydicom metadata."""
 
     def __init__(self):
         self.data = {
@@ -32,8 +32,7 @@ class MockMeta:
 
 
 def make_mock_project():
-    """Create nested Flywheel mock structure"""
-
+    """Create nested Flywheel mock structure."""
     acquisition = MagicMock()
     acquisition.files = []
 
@@ -160,10 +159,7 @@ def test_upload_init_failure(mock_zip):
 @patch("fwImageUpload.pydicom.dcmread")
 @patch("fwImageUpload.zipfile.ZipFile")
 def test_upload_images_basic(mock_zip, mock_dcmread, tmp_path):
-    """
-    End-to-end uploadImages test with mocks
-    """
-
+    """End-to-end uploadImages test with mocks."""
     # ---- Setup ZIP ----
     zip_inst = mock_zip.return_value
     zip_inst.namelist.return_value = [
@@ -310,7 +306,7 @@ def test_main_fatal_error(
         ["prog", "-f", "file.zip"],
     )
 
-    mock_connector.side_effect = Exception("boom")
+    mock_connector.side_effect = ValueError("boom")
 
     with pytest.raises(SystemExit):
         fwImageUpload.main()
