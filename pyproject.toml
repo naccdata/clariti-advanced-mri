@@ -29,7 +29,13 @@ indent-width = 4
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["A", "B", "E", "W", "F", "I", "RUF", "SIM", "C90", "PLW0406", "COM818", "SLF001"]
+select = ["A", "B", "BLE", "D", "E", "W", "F", "I", "RUF", "SIM", "C90", "PLW0406", "COM818", "SLF001"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.pytest.ini_options]
 testpaths = ["ImageUploading/tests", "QSMxT/tests"]
