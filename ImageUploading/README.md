@@ -59,7 +59,7 @@ pip install flywheel-sdk pydicom fw-client
 
 - Ideal for:
   - Multi-site imaging studies
-  - Centralized ingestion pipelines (e.g., LONI -> Flywheel)
+  - Centralized ingestion pipelines (e.g., LONI → Flywheel)
   - Large DICOM uploads requiring standardized Flywheel organization
 
 Output ZIPs are generated in a temporary directory and cleaned up post-run.
