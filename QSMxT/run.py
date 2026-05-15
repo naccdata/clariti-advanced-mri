@@ -26,6 +26,29 @@ from pathlib import Path
 import flywheel
 
 
+def safe_extract(zip_path, target_dir):
+    """Extract ZIP with path traversal protection.
+
+    Validates that no archive member would write outside the target directory.
+
+    Raises
+    ------
+    ValueError
+        If a zip entry attempts to escape the target directory.
+    """
+    target_dir = os.path.realpath(target_dir)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        for member in zf.namelist():
+            member_path = os.path.realpath(
+                os.path.join(target_dir, member)
+            )
+            if not member_path.startswith(target_dir + os.sep) and member_path != target_dir:
+                raise ValueError(
+                    f"Zip entry would escape target directory: {member}"
+                )
+        zf.extractall(target_dir)
+
+
 def run_cmd(cmd, description):
     """Run a shell command with logging + error trapping."""
     print(f"\n[CMD] {description}: {' '.join(cmd)}")
@@ -56,8 +79,7 @@ def flywheel_run():
     print(f"Unzipping MEGRE DICOMs: {dicom_megre_zip}")
     for i in range(len(dicom_megre_zip)):
         if dicom_megre_zip[i] != None:
-            with zipfile.ZipFile(dicom_megre_zip[i], "r") as zf:
-                zf.extractall("/dicoms/qsm")
+            safe_extract(dicom_megre_zip[i], "/dicoms/qsm")
 
     ###########################################################################
     # Step 2: Convert MEGRE DICOMs to BIDS using dicom-convert
@@ -77,8 +99,7 @@ def flywheel_run():
     ###########################################################################
     print(f"Unzipping T1w DICOMs: {dicom_t1w_zip}")
     if dicom_t1w_zip != None:
-        with zipfile.ZipFile(dicom_t1w_zip, "r") as zf:
-            zf.extractall("/dicoms/T1w")
+        safe_extract(dicom_t1w_zip, "/dicoms/T1w")
 
     ###########################################################################
     # Step 4: Convert T1w DICOMs into BIDS-compatible naming
