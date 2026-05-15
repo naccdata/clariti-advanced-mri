@@ -69,11 +69,6 @@
       "description": "Pattern used to identify protocol names intended for QSM reconstruction. By default, ALL acquisitions are considered QSM. If your DICOMs contain non-QSM images, you MUST specify which protocol is intended for QSM using this pattern.",
       "type": "string",
       "default": "*"
-    },
-    "qsmxt_cmd_args": {
-      "description": "Specify additional command-line arguments for QSMxT",
-      "type": "string",
-      "default": ""
     }
   },
   "inputs": {

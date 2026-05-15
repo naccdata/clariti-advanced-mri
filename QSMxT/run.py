@@ -89,11 +89,6 @@ def run_qsmxt(config: dict) -> None:
         if config.get(arg, False):
             qsmxt_cmd.append(f"--{arg}")
 
-    # Append optional custom arguments
-    extra_args = config.get("qsmxt_cmd_args", "")
-    if extra_args:
-        qsmxt_cmd += extra_args.split()
-
     log.info("Running QSMxT: %s", qsmxt_cmd)
     exec_command(qsmxt_cmd, stream=True)
 
