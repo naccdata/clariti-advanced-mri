@@ -1,1 +1,1 @@
-flywheel-sdk~=21.5.0
+fw-gear[sdk]~=0.3.0
