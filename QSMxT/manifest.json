@@ -64,6 +64,42 @@
       "description": "Pattern used to identify protocol names intended for QSM reconstruction. By default, ALL acquisitions are considered QSM. If your DICOMs contain non-QSM images, you MUST specify which protocol is intended for QSM using this pattern.",
       "type": "string",
       "default": "*"
+    },
+    "do_t2starmap": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable T2* map generation"
+    },
+    "do_r2starmap": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable R2* map generation"
+    },
+    "do_analysis": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable region-based analysis with tabular output"
+    },
+    "combine_phase": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable phase combination for multi-echo data"
+    },
+    "export_dicoms": {
+      "type": "boolean",
+      "default": false,
+      "description": "Export results as DICOM files"
+    },
+    "masking_input": {
+      "description": "Input type for brain masking. Use 'magnitude' to derive masks from magnitude images, or 'phase' to use phase data.",
+      "type": "string",
+      "default": "",
+      "enum": ["", "magnitude", "phase"]
+    },
+    "obliquity_threshold": {
+      "description": "Maximum obliquity angle (in degrees) allowed before resampling. Set to 0 to disable the threshold check.",
+      "type": "number",
+      "optional": true
     }
   },
   "inputs": {

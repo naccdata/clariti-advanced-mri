@@ -85,9 +85,20 @@ def run_qsmxt(config: dict) -> None:
         "--auto_yes",
     ]
 
-    for arg in ["do_qsm", "do_swi", "do_segmentation"]:
+    for arg in ["do_qsm", "do_swi", "do_segmentation",
+                "do_t2starmap", "do_r2starmap", "do_analysis",
+                "combine_phase", "export_dicoms"]:
         if config.get(arg, False):
             qsmxt_cmd.append(f"--{arg}")
+
+    # Optional string/numeric arguments
+    masking_input = config.get("masking_input", "")
+    if masking_input:
+        qsmxt_cmd.extend(["--masking_input", masking_input])
+
+    obliquity_threshold = config.get("obliquity_threshold")
+    if obliquity_threshold is not None:
+        qsmxt_cmd.extend(["--obliquity_threshold", str(obliquity_threshold)])
 
     log.info("Running QSMxT: %s", qsmxt_cmd)
     exec_command(qsmxt_cmd, stream=True)
