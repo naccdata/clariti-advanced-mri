@@ -10,16 +10,22 @@
   "license": "GPL-3.0",
   "version": "8.3.2",
   "environment": {
-    "PATH": "/opt/miniconda-4.12.0/bin:/opt/ants-2.4.3/bin:/opt/ants-2.4.3/Scripts:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/FastSurfer:/opt/freesurfer/bin:/opt/miniconda-latest/bin:/opt/bru2:/opt/julia-1.9.3/bin:/opt/node-v14.17.0-linux-x64/bin",
     "ANTSPATH": "/opt/ants-2.4.3/bin",
-    "LD_LIBRARY_PATH": "/opt/ants-2.4.3/lib:",
+    "BASE_DIR": "/flywheel/v0",
+    "CONDA_DIR": "/opt/miniconda-4.12.0",
+    "DEBIAN_FRONTEND": "noninteractive",
+    "DEPLOY_BINS": "python3:python:nii2dcm:nextqsm:nipypecli:bet:dcm2niix:Bru2:Bru2Nii:julia:qsmxt:dicom-convert:nifti-convert",
+    "DEPLOY_PATH": "/opt/ants-2.4.3/bin:/opt/FastSurfer:/opt/freesurfer/bin:/opt/QSMxT-UI",
     "FASTSURFER_HOME": "/opt/FastSurfer",
     "FREESURFER_HOME": "/opt/freesurfer",
-    "SUBJECTS_DIR": "/tmp",
     "JULIA_DEPOT_PATH": "~/.julia:/opt/julia_depot",
-    "CONDA_DIR": "/opt/miniconda-4.12.0",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
+    "LD_LIBRARY_PATH": "/opt/ants-2.4.3/lib:",
+    "ND_ENTRYPOINT": "/neurodocker/startup.sh",
+    "PATH": "/opt/miniconda-4.12.0/bin:/opt/ants-2.4.3/bin:/opt/ants-2.4.3/Scripts:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/FastSurfer:/opt/freesurfer/bin:/opt/miniconda-latest/bin:/opt/bru2:/opt/julia-1.9.3/bin:/opt/node-v14.17.0-linux-x64/bin",
+    "PWD": "/flywheel/v0",
+    "SUBJECTS_DIR": "/tmp",
     "TZ": "UTC"
   },
   "custom": {
@@ -60,11 +66,6 @@
       "default": true,
       "description": "Enable brain segmentation and region-based susceptibility analysis"
     },
-    "qsm_protocol_pattern": {
-      "description": "Pattern used to identify protocol names intended for QSM reconstruction. By default, ALL acquisitions are considered QSM. If your DICOMs contain non-QSM images, you MUST specify which protocol is intended for QSM using this pattern.",
-      "type": "string",
-      "default": "*"
-    },
     "do_t2starmap": {
       "type": "boolean",
       "default": false,
@@ -94,7 +95,11 @@
       "description": "Input type for brain masking. Use 'magnitude' to derive masks from magnitude images, or 'phase' to use phase data.",
       "type": "string",
       "default": "",
-      "enum": ["", "magnitude", "phase"]
+      "enum": [
+        "",
+        "magnitude",
+        "phase"
+      ]
     },
     "obliquity_threshold": {
       "description": "Maximum obliquity angle (in degrees) allowed before resampling. Set to 0 to disable the threshold check.",

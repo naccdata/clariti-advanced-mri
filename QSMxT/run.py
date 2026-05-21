@@ -67,9 +67,12 @@ def convert_t1w_to_bids() -> None:
     exec_command(
         [
             "dcm2niix",
-            "-b", "y",
-            "-f", t1_target_name,
-            "-o", str(first_file.parent),
+            "-b",
+            "y",
+            "-f",
+            t1_target_name,
+            "-o",
+            str(first_file.parent),
         ],
         stream=True,
     )
@@ -81,13 +84,21 @@ def run_qsmxt(config: dict) -> None:
         "qsmxt",
         "/bids",
         "/qsm",
-        "--premade", str(config.get("premade", "gre")),
+        "--premade",
+        str(config.get("premade", "gre")),
         "--auto_yes",
     ]
 
-    for arg in ["do_qsm", "do_swi", "do_segmentation",
-                "do_t2starmap", "do_r2starmap", "do_analysis",
-                "combine_phase", "export_dicoms"]:
+    for arg in [
+        "do_qsm",
+        "do_swi",
+        "do_segmentation",
+        "do_t2starmap",
+        "do_r2starmap",
+        "do_analysis",
+        "combine_phase",
+        "export_dicoms",
+    ]:
         if config.get(arg, False):
             qsmxt_cmd.append(f"--{arg}")
 
