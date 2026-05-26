@@ -73,7 +73,7 @@ flyw login
 flyw gear --validate QSMxT/manifest.json
 
 # Upload the gear (tags and pushes the locally built image)
-flyw gear upload --gear-path QSMxT/
+flyw gear upload QSMxT/
 ```
 
 The `flyw gear upload` command tags the local image (from `custom.gear-builder.image`
