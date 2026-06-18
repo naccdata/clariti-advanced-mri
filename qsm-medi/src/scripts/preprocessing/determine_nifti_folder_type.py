@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2025 Arnold Evia <Arnold_Evia@rush.edu>
 #
 # SPDX-License-Identifier: BSD-3-Clause
+"""Determine NIfTI folder structure and write metadata for the MATLAB pipeline.
+
+Inspects dcm2niix output to identify echo counts, data types (magnitude,
+phase, real, imaginary), and common filename prefixes.
+"""
 
 import json
 import os
@@ -11,6 +16,7 @@ output_folder = os.environ["OUTPUT_FOLDER"]
 
 
 def unescape_re(s):
+    """Remove regex escape backslashes from a string."""
     # Matches a backslash followed by any character and replaces it with that character
     return re.sub(r"\\(.)", r"\1", s)
 
@@ -29,13 +35,11 @@ try:
 
 except FileNotFoundError:
     pass
-except json.JSONDecodeError:
-    raise Exception(
-        f"Error: Failed to decode JSON from '{path_config_json}'. "
+except json.JSONDecodeError as exc:
+    raise ValueError(
+        f"Failed to decode JSON from '{path_config_json}'. "
         f"The file might contain invalid JSON."
-    ) from json.JSONDecodeError
-except Exception as e:
-    raise Exception(f"An unexpected error occurred: {e}") from e
+    ) from exc
 
 
 list_files = os.listdir(path_dcm2niix_folder)
@@ -111,8 +115,8 @@ else:
         single_file = True
         num_echoes = -1
     else:
-        raise Exception(
-            f"ERROR: Unable to find a nifti file that "
+        raise ValueError(
+            f"Unable to find a nifti file that "
             f"has a common base prefix of regex pattern - {pattern}"
         )
 

@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2025 Arnold Evia <Arnold_Evia@rush.edu>
 #
 # SPDX-License-Identifier: BSD-3-Clause
+"""Create a 3D reference NIfTI from DICOM or NIfTI input data.
+
+Runs dcm2niix for DICOM inputs, then extracts the first volume if the
+reference image is 4D.
+"""
 
 import glob
 import json
@@ -21,6 +26,7 @@ path_dcm2niix_folder = f"{output_folder}/temp_dcm2niix"
 
 
 def run_command_with_subprocess(command):
+    """Run a subprocess command, streaming output to stdout."""
     terminal_env = os.environ.copy()
 
     def stream_process(process):

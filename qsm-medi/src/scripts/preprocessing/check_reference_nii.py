@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Arnold Evia <Arnold_Evia@rush.edu>
 #
 # SPDX-License-Identifier: BSD-3-Clause
+"""Validate that the reference NIfTI is 3D, extracting first volume if 4D."""
 
 import os
 

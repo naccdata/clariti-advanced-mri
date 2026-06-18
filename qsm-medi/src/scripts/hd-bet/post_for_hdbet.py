@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Arnold Evia <Arnold_Evia@rush.edu>
 #
 # SPDX-License-Identifier: BSD-3-Clause
+"""Post-process HD-BET output by reorienting the brain mask to native space."""
 
 import os
 
