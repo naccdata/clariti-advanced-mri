@@ -15,6 +15,12 @@ Center. For any questions, please email Dr. Evia (Arnold_Evia@rush.edu).
 - MEDI reconstruction, doi: 10.1016/j.neuroimage.2011.08.082
 
 ## Release Notes
+- 2.5.0 (07/01/26)
+
+        - Updated software
+          - MATLAB MCR 2018b -> 2023b
+          - dcm2niix commit 7d295ff5e9f4b31227b9ef4c89e0118ddef457a6 -> tag v1.0.20260416
+        - Modified scripts to use updated software 
 
 - 2.4.1 (05/18/26)
 

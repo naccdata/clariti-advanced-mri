@@ -2,7 +2,7 @@
   "name": "qsm-medi",
   "label": "Quantitative Susceptibility Mapping (QSM) using Morphology Enabled Dipole Inversion (MEDI)",
   "description": "Quantitative Susceptibility Mapping (QSM) using the Morphology Enabled Dipole Inversion (MEDI) with maximum spherical mean value filtering (mSMV).",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "author": "Arnold Evia, <arnold_evia@rush.edu>",
   "maintainer": "",
   "cite": "doi: 10.1016/j.neuroimage.2011.08.082, doi: 10.1111/jon.12923, doi: 10.1002/mrm.25137, doi: 10.1002/nbm.1670, doi: 10.1002/mrm.28563, doi: 10.1002/mrm.24272, doi: 10.1002/mrm.29963, doi: 10.1002/hbm.24750",
@@ -10,18 +10,22 @@
   "source": "",
   "license": "BSD-3-Clause",
   "environment": {
-    "LD_LIBRARY_PATH": ":/usr/lib/x86_64-linux-gnu:/opt/MCR-2018b/v95/runtime/glnxa64:/opt/MCR-2018b/v95/bin/glnxa64:/opt/MCR-2018b/v95/sys/os/glnxa64:/opt/MCR-2018b/v95/extern/bin/glnxa64",
-    "MATLABCMD": "/opt/MCR-2018b/2018b/toolbox/matlab",
-    "MCRROOT": "/opt/MCR-2018b/2018b",
-    "PATH": "/opt/dcm2niix-7d295ff5e9f4b31227b9ef4c89e0118ddef457a6/bin:/opt/process_QSM/.venv/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "HDBET_MODEL_DIR": "/opt/HD-BET_model_weights/release_v1.5.0",
+    "LANG": "en_US.UTF-8",
+    "LC_ALL": "en_US.UTF-8",
+    "LD_LIBRARY_PATH": ":/usr/lib/x86_64-linux-gnu:/opt/MCR-2023b/v915/runtime/glnxa64:/opt/MCR-2023b/v915/bin/glnxa64:/opt/MCR-2023b/v915/sys/os/glnxa64:/opt/MCR-2023b/v915/extern/bin/glnxa64",
+    "MATLABCMD": "/opt/MCR-2023b/2023b/toolbox/matlab",
+    "MCRROOT": "/opt/MCR-2023b/2023b",
+    "ND_ENTRYPOINT": "/neurodocker/startup.sh",
+    "PATH": "/opt/dcm2niix-v1.0.20260416/bin:/opt/process_QSM/.venv/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "PWD": "/opt/process_QSM",
     "UV_CACHE_DIR": "/opt/uv/cache",
-    "XAPPLRESDIR": "/opt//opt/MCR-2018b/v95/x11/app-defaults"
+    "XAPPLRESDIR": "/opt//opt/MCR-2023b/v915/x11/app-defaults"
   },
   "custom": {
     "gear-builder": {
       "category": "analysis",
-      "image": "aevia.azurecr.io/qsm-medi:2.4.1"
+      "image": "aevia.azurecr.io/qsm-medi:2.5.0"
     },
     "flywheel": {
       "suite": "QSM-MEDI"

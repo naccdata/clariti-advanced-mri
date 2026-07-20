@@ -4,14 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qsm-medi"
-version = "2.4.1"
-description = "Add your description here"
-requires-python = ">=3.8"
+version = "2.5.0"
+description = "A Python package for QSM processing and analysis."
+requires-python = ">=3.9"
 dependencies = [
-    "nibabel==5.1.0",
+    "nibabel",
     "flywheel-sdk",
     "fw-client",
+    "hd-bet @ file:///opt/HD-BET",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.uv]
 dev-dependencies = [
@@ -24,7 +28,7 @@ dev-dependencies = [
 line-length = 88
 indent-width = 4
 target-version = "py311"
-extend-exclude = ["src/hd-bet","src/mSMV-vkernel_250813","qsm_optimization"]
+extend-exclude = ["src/hd-bet","src/mSMV-vkernel_250813","qsm_optimization","archive"]
 
 [tool.ruff.lint]
 select = ["A", "B", "E", "W", "F", "I", "RUF", "SIM", "C90", "PLW0406", "COM818", "SLF001"]
