@@ -3,18 +3,18 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-num_threads_hdbet=0 #use all available threads
-
+export PYTHONUNBUFFERED=1
 export INPUT_FOLDER="/input"
 export OUTPUT_FOLDER="/output"
 
 export PATH_PARAMETERS_JSON="${INPUT_FOLDER}/parameters/qsm_parameters.json"
-export PIPELINE_VERSION="2.4.1"
+export PIPELINE_VERSION="2.5.0"
 custom_parameters_json_set=0
 input_dicom_exists=0
 input_nifti_exists=0
 input_data_type=""
 config_name=""
+num_threads_hdbet=0
 
 while getopts "n:c:i:o:p:" opt; do
   case $opt in
@@ -115,7 +115,7 @@ if [ -f "${INPUT_FOLDER}/custom/QSM_mask.nii.gz" ]; then
   gunzip ${INPUT_FOLDER}/custom/QSM_mask.nii.gz
 fi
 if [ ! -f "${INPUT_FOLDER}/custom/QSM_mask.nii" ]; then
-  /opt/process_QSM/for_redistribution_files_only/run_pipeline_qsm.sh /opt/MCR-2018b/v95 pre_hdbet ${PATH_PARAMETERS_JSON} ${OUTPUT_FOLDER} 2>&1 | tee -a ${OUTPUT_FOLDER}/processing.log
+  /opt/process_QSM/for_redistribution_files_only/run_pipeline_qsm.sh /opt/MCR-2023b/R2023b pre_hdbet ${PATH_PARAMETERS_JSON} ${OUTPUT_FOLDER} 2>&1 | tee -a ${OUTPUT_FOLDER}/processing.log
   if [ ! -f "${OUTPUT_FOLDER}/iMag.nii" ]; then
     echo "ERROR: Could not create magnitude image for hd-bet" | tee -a ${OUTPUT_FOLDER}/processing.log
     exit 1
@@ -134,7 +134,7 @@ echo "" | tee -a ${OUTPUT_FOLDER}/processing.log
 echo "------------------------------------------" | tee -a ${OUTPUT_FOLDER}/processing.log
 echo "INFO: Starting MEDI processing" | tee -a ${OUTPUT_FOLDER}/processing.log
 
-/opt/process_QSM/for_redistribution_files_only/run_pipeline_qsm.sh /opt/MCR-2018b/v95 execute ${PATH_PARAMETERS_JSON} ${OUTPUT_FOLDER} 2>&1 | tee -a ${OUTPUT_FOLDER}/processing.log
+/opt/process_QSM/for_redistribution_files_only/run_pipeline_qsm.sh /opt/MCR-2023b/R2023b execute ${PATH_PARAMETERS_JSON} ${OUTPUT_FOLDER} 2>&1 | tee -a ${OUTPUT_FOLDER}/processing.log
 if [ ! -f "${OUTPUT_FOLDER}/QSM.nii" ]; then
   echo "ERROR: QSM pipeline failed during MEDI processing" | tee -a ${OUTPUT_FOLDER}/processing.log
   exit 2
