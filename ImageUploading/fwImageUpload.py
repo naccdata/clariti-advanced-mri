@@ -39,8 +39,8 @@ logger.addHandler(handler)
 
 class FlywheelConnector:
     """
-    FlywheelConnector.
-
+    FlywheelConnector
+    ------------------
     Provides a convenience wrapper around:
 
       • The Flywheel REST API client (FWClient)
@@ -183,8 +183,8 @@ class FlywheelConnector:
 
 class UploadImageData:
     """
-    UploadImageData.
-
+    UploadImageData
+    ----------------
     Responsible for uploading DICOMs from an input ZIP file to Flywheel.
     Files are grouped by SeriesInstanceUID and uploaded as per-series ZIPs.
 
@@ -299,7 +299,7 @@ class UploadImageData:
                         zipNumbers.setdefault(suid, []).append(seriesNumber)
                         zipDates.setdefault(suid, []).append(studyDate)
 
-                except (OSError, KeyError, AttributeError) as e:
+                except Exception as e:
                     logger.error(
                         f"Metadata extraction failure for subject {subject_label}: {e}"
                     )
@@ -351,7 +351,7 @@ class UploadImageData:
                         logger.info(f"Uploading {zipFileName}…")
                         acquisition.upload_file(zipPath, metadata={"type": "dicom"})
 
-                    except (OSError, flywheel.ApiException) as e:
+                    except Exception as e:
                         logger.error(f"Failed to upload series {suid}: {e}")
                         continue
 
@@ -365,8 +365,8 @@ class UploadImageData:
 
 class Config:
     """
-    Config.
-
+    Config
+    ------
     Wrapper for reading JSON configuration that supplies Flywheel credentials.
 
     Parameters
@@ -463,7 +463,7 @@ def main() -> None:
         fc.setProject(project_name)
         uploader = UploadImageData(fc, args.file)
         uploader.uploadImages(segIndex)
-    except (ValueError, OSError, zipfile.BadZipFile, flywheel.ApiException) as e:
+    except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Flywheel Gear: QSMxT Processing Pipeline.
+"""
+Flywheel Gear: QSMxT Processing Pipeline.
 
 This gear:
 1. Unzips MEGRE and T1w DICOM archives.
@@ -9,196 +10,173 @@ This gear:
 5. Collects workflow outputs, standard NIfTI results, and crash logs.
 6. Packages results into artifacts suitable for Flywheel.
 
-Environment Assumptions
------------------------
+Environment Assumptions:
 - QSMxT, dicom-convert, and dcm2niix are already installed in the container.
 - Filesystem paths /dicoms, /bids, /qsm are writable.
 """
 
 import glob
-import logging
 import os
 import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
-from fw_gear.context import GearContext
-from fw_gear.utils.archive.zip_manager import unzip_archive, zip_output
-from fw_gear.utils.wrapper import exec_command
-
-log = logging.getLogger(__name__)
+import flywheel
 
 
-def unzip_inputs(megre_paths: list[str | None], t1w_path: str | None) -> None:
-    """Unzip MEGRE and T1w DICOM archives to working directories."""
-    log.info("Unzipping MEGRE DICOMs: %s", megre_paths)
-    for path in megre_paths:
-        if path is not None:
-            unzip_archive(path, "/dicoms/qsm")
+def run_cmd(cmd, description):
+    """Run a shell command with logging + error trapping."""
+    print(f"\n[CMD] {description}: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
-    log.info("Unzipping T1w DICOMs: %s", t1w_path)
-    if t1w_path is not None:
-        unzip_archive(t1w_path, "/dicoms/T1w")
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr)
+        raise RuntimeError(f"Command failed during: {description}")
 
-
-def convert_megre_to_bids() -> None:
-    """Convert MEGRE DICOMs to BIDS using dicom-convert."""
-    exec_command(
-        ["dicom-convert", "/dicoms/", "/bids/", "--auto_yes"],
-        stream=True,
-    )
+    return result
 
 
-def convert_t1w_to_bids() -> None:
-    """Convert T1w DICOMs into BIDS-compatible naming via dcm2niix."""
-    anat_list = list(Path("/bids/").glob("sub*/ses*/anat/*.nii"))
+def flywheel_run():
+    """Execute main Flywheel gear workflow."""
+    with flywheel.GearContext() as context:
+        config = context.config
+        dicom_megre_zip = []
+        dicom_megre_zip.append(context.get_input_path("input_file"))
+        dicom_megre_zip.append(context.get_input_path("input_file_opt"))
+        dicom_megre_zip.append(context.get_input_path("input_file_opt2"))
+        dicom_t1w_zip = context.get_input_path("anatomical")
+        out_dir = context.output_dir
 
-    if not anat_list:
-        log.warning("No MEGRE anat/*.nii found. Skipping T1w conversion.")
-        return
+    ###########################################################################
+    # Step 1: Unzip MEGRE DICOMs
+    ###########################################################################
+    print(f"Unzipping MEGRE DICOMs: {dicom_megre_zip}")
+    for i in range(len(dicom_megre_zip)):
+        if dicom_megre_zip[i] != None:
+            with zipfile.ZipFile(dicom_megre_zip[i], "r") as zf:
+                zf.extractall("/dicoms/qsm")
 
-    first_file = anat_list[0]
-    important_parts = [
-        s for s in first_file.name.split("_") if "sub" in s or "ses" in s
-    ]
-    t1_target_name = "_".join([*important_parts, "T1w"])
-
-    exec_command(
+    ###########################################################################
+    # Step 2: Convert MEGRE DICOMs to BIDS using dicom-convert
+    ###########################################################################
+    run_cmd(
         [
-            "dcm2niix",
-            "-b",
-            "y",
-            "-f",
-            t1_target_name,
-            "-o",
-            str(first_file.parent),
+            "dicom-convert",
+            "/dicoms/",
+            "/bids/",
+            "--auto_yes",
         ],
-        stream=True,
+        description="DICOM to BIDS conversion (MEGRE)",
     )
 
+    ###########################################################################
+    # Step 3: Unzip T1w anatomical DICOMs
+    ###########################################################################
+    print(f"Unzipping T1w DICOMs: {dicom_t1w_zip}")
+    if dicom_t1w_zip != None:
+        with zipfile.ZipFile(dicom_t1w_zip, "r") as zf:
+            zf.extractall("/dicoms/T1w")
 
-def run_qsmxt(config: dict) -> None:
-    """Build and execute the QSMxT command from gear configuration."""
+    ###########################################################################
+    # Step 4: Convert T1w DICOMs into BIDS-compatible naming
+    ###########################################################################
+    anat_list = list(Path("/bids/").glob("sub*/ses*/anat/*.nii"))
+    t1_target_name = None
+
+    if anat_list:
+        # Derive subject/session from existing BIDS file
+        first_file = anat_list[0]
+        important_parts = [
+            s for s in first_file.name.split("_") if "sub" in s or "ses" in s
+        ]
+        t1_target_name = "_".join(important_parts + ["T1w"])
+
+        run_cmd(
+            [
+                "dcm2niix",
+                "-b",
+                "y",
+                "-f",
+                t1_target_name,
+                "-o",
+                str(first_file.parent)
+            ],
+            description="T1w DICOM to NIfTI conversion",
+        )
+    else:
+        print("WARNING: No MEGRE anat/*.nii found. Skipping T1w renaming.")
+
+    ###########################################################################
+    # Step 5: Run QSMxT
+    ###########################################################################
     qsmxt_cmd = [
         "qsmxt",
         "/bids",
         "/qsm",
         "--premade",
-        str(config.get("premade", "gre")),
+        str(config.get("premade", "False")),
         "--auto_yes",
     ]
 
-    for arg in [
-        "do_qsm",
-        "do_swi",
-        "do_segmentation",
-        "do_t2starmap",
-        "do_r2starmap",
-        "do_analysis",
-        "combine_phase",
-        "export_dicoms",
-    ]:
-        if config.get(arg, False):
+    for arg in ["do_qsm", "do_swi", "do_segmentation"]:
+        result = config.get(arg, "False")
+        if result :
             qsmxt_cmd.append(f"--{arg}")
 
-    # Optional string/numeric arguments
-    masking_input = config.get("masking_input", "")
-    if masking_input:
-        qsmxt_cmd.extend(["--masking_input", masking_input])
+    # Append optional custom arguments
+    extra_args = config.get("qsmxt_cmd_args", "")
+    if extra_args:
+        qsmxt_cmd += extra_args.split()
 
-    obliquity_threshold = config.get("obliquity_threshold")
-    if obliquity_threshold is not None:
-        qsmxt_cmd.extend(["--obliquity_threshold", str(obliquity_threshold)])
+    print (f"QSMxT {qsmxt_cmd}")
 
-    log.info("Running QSMxT: %s", qsmxt_cmd)
-    exec_command(qsmxt_cmd, stream=True)
+    run_cmd(qsmxt_cmd, description="QSMxT processing")
 
-
-def package_outputs(output_dir: str) -> None:
-    """Package QSMxT results into gear output artifacts."""
-    # Package workflow directory
+    ###########################################################################
+    # Step 6: Package workflow outputs
+    ###########################################################################
     workflow_path = "/qsm/workflow"
-    if os.path.isdir(workflow_path):
-        log.info("Packaging workflow directory")
-        zip_output(
-            root_dir="/qsm",
-            source_dir="workflow",
-            output_zip_filename=os.path.join(output_dir, "workflow.zip"),
-        )
-        shutil.rmtree(workflow_path, ignore_errors=True)
+    workflow_zip = os.path.join(out_dir, "workflow.zip")
 
-    # Copy NIfTI results
+    print(f"Packaging workflow directory → {workflow_zip}")
+    shutil.make_archive(os.path.splitext(workflow_zip)[0], "zip", workflow_path)
+
+    # Delete expanded workflow to reduce artifact size
+    shutil.rmtree(workflow_path, ignore_errors=True)
+
+    ###########################################################################
+    # Step 7: Extract and copy resulting NIfTI files into the Flywheel view
+    ###########################################################################
     nifti_files = glob.glob("/qsm/**/*.nii", recursive=True)
-    log.info("NIfTI files detected: %d", len(nifti_files))
+    print("NIfTI files detected:", nifti_files)
+
     for f in nifti_files:
-        shutil.copy2(f, os.path.join(output_dir, os.path.basename(f)))
+        shutil.copy2(f, os.path.join(out_dir, os.path.basename(f)))
 
     # Create a zip of the entire qsm output tree
-    zip_output(
-        root_dir="/",
-        source_dir="qsm",
-        output_zip_filename=os.path.join(output_dir, "qsm.zip"),
-    )
+    shutil.make_archive(os.path.join(out_dir, "qsm"), "zip", "/qsm/")
 
-
-def check_for_crashes(output_dir: str) -> bool:
-    """Check for crash files and package them if found.
-
-    Returns
-    -------
-    bool
-        True if crashes were detected.
-    """
+    ###########################################################################
+    # Step 8: Capture crash files if any
+    ###########################################################################
     crash_files = glob.glob("/flywheel/v0/crash*.pklz")
-    if not crash_files:
-        return False
+    if crash_files:
+        crash_zip = os.path.join(out_dir, "crashes.zip")
+        print("Packaging crash reports:", crash_zip)
 
-    crash_zip = os.path.join(output_dir, "crashes.zip")
-    log.error("Crashes detected. Packaging crash reports: %s", crash_zip)
+        with zipfile.ZipFile(crash_zip, "w") as zf:
+            for crash in crash_files:
+                zf.write(crash, os.path.basename(crash))
 
-    with zipfile.ZipFile(crash_zip, "w") as zf:
-        for crash in crash_files:
-            zf.write(crash, os.path.basename(crash))
-
-    return True
-
-
-def main(context: GearContext) -> None:
-    """Execute main gear workflow."""
-    config = context.config.opts
-
-    # Gather input paths
-    megre_paths = [
-        context.config.get_input_path("input_file"),
-        context.config.get_input_path("input_file_opt"),
-        context.config.get_input_path("input_file_opt2"),
-    ]
-    t1w_path = context.config.get_input_path("anatomical")
-
-    # Step 1-2: Unzip and convert MEGRE
-    unzip_inputs(megre_paths, t1w_path)
-    convert_megre_to_bids()
-
-    # Step 3: Convert T1w
-    convert_t1w_to_bids()
-
-    # Step 4: Run QSMxT
-    run_qsmxt(config)
-
-    # Step 5: Package outputs
-    package_outputs(context.output_dir)
-
-    # Step 6: Check for crashes
-    if check_for_crashes(context.output_dir):
-        log.error("Inspect workflow.zip and crashes.zip for details.")
+        print("ERROR: Crashes detected. Inspect workflow.zip and crashes.zip.")
         sys.exit(1)
 
-    log.info("QSMxT Gear completed successfully.")
+    print("QSMxT Gear completed successfully.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    with GearContext() as context:
-        context.init_logging()
-        context.log_config()
-        main(context)
+    flywheel_run()

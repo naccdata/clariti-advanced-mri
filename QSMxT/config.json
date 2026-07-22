@@ -1,0 +1,59 @@
+{
+    "config": {
+        "premade": "gre",
+        "qsm_protocol_pattern": "*",
+        "qsmxt_cmd_args": "",
+        "do_swi": true,
+        "do_qsm": true,
+        "do_segmentation": true
+    },
+    "inputs": {
+        "input_file": {
+            "base": "file",
+            "location": {
+                "name": "13-CLARITI_NACC874518_MR_CLARiTI_AdvMRI_QSM_GRAPPA3.zip",
+                "path": "/flywheel/v0/input/input_file/13-CLARITI_NACC874518_MR_CLARiTI_AdvMRI_QSM_GRAPPA3.zip"
+            },
+            "object": {
+                "size": 72241904,
+                "type": null,
+                "mimetype": "application/octet-stream",
+                "modality": null,
+                "classification": {},
+                "tags": [],
+                "info": {},
+                "zip_member_count": null,
+                "version": 1,
+                "file_id": "",
+                "origin": {
+                    "type": "user",
+                    "id": ""
+                }
+            }
+        },
+        "input_file_opt": {
+            "base": "file",
+            "location": {
+                "name": "14-CLARITI_NACC874518_MR_CLARiTI_AdvMRI_QSM_GRAPPA3.zip",
+                "path": "/flywheel/v0/input/input_file_opt/14-CLARITI_NACC874518_MR_CLARiTI_AdvMRI_QSM_GRAPPA3.zip"
+            },
+            "object": {
+                "size": 72241910,
+                "type": null,
+                "mimetype": "application/octet-stream",
+                "modality": null,
+                "classification": {},
+                "tags": [],
+                "info": {},
+                "zip_member_count": null,
+                "version": 1,
+                "file_id": "",
+                "origin": {
+                    "type": "user",
+                    "id": ""
+                }
+            }
+        }
+    },
+    "destination": {}
+}

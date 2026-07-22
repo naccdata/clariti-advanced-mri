@@ -217,6 +217,16 @@ __marimo__/
 
 # Project-specific
 *.conf
+*.configuration
 !*.conf.example
 
+
+# QSMxT
+QSMxT/input/
+QSMxT/output/
+QSMxt/work/
+
+# image files
+*.nii
+*.nii.gz
 

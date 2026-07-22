@@ -1,16 +1,21 @@
 import json
 import os
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
 
+import sys
+import os
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-import fwImageUpload  # noqa: E402
-from fwImageUpload import FlywheelConnector  # noqa: E402
+from fwImageUpload import Config, FlywheelConnector
+import fwImageUpload
+
+
 
 # --------------------------------------------------
 # Helpers
@@ -18,7 +23,7 @@ from fwImageUpload import FlywheelConnector  # noqa: E402
 
 
 class MockMeta:
-    """Mock pydicom metadata."""
+    """Mock pydicom metadata"""
 
     def __init__(self):
         self.data = {
@@ -32,7 +37,8 @@ class MockMeta:
 
 
 def make_mock_project():
-    """Create nested Flywheel mock structure."""
+    """Create nested Flywheel mock structure"""
+
     acquisition = MagicMock()
     acquisition.files = []
 
@@ -72,7 +78,9 @@ def test_set_project_success(mock_sdk, mock_rest):
     mock_project.label = "TEST_PROJECT"
 
     rest = mock_rest.return_value
-    rest.get.return_value = [MagicMock(label="TEST_PROJECT", _id="123")]
+    rest.get.return_value = [
+        MagicMock(label="TEST_PROJECT", _id="123")
+    ]
 
     sdk = mock_sdk.return_value
     sdk.get_project.return_value = mock_project
@@ -96,7 +104,9 @@ def test_set_project_not_found(mock_sdk, mock_rest):
 
 
 def test_collect_image_information_no_project():
-    fc = fwImageUpload.FlywheelConnector.__new__(fwImageUpload.FlywheelConnector)
+    fc = fwImageUpload.FlywheelConnector.__new__(
+        fwImageUpload.FlywheelConnector
+    )
     fc.project = None
 
     with pytest.raises(RuntimeError):
@@ -104,7 +114,9 @@ def test_collect_image_information_no_project():
 
 
 def test_collect_session_information_no_project():
-    fc = fwImageUpload.FlywheelConnector.__new__(fwImageUpload.FlywheelConnector)
+    fc = fwImageUpload.FlywheelConnector.__new__(
+        fwImageUpload.FlywheelConnector
+    )
     fc.project = None
 
     with pytest.raises(RuntimeError):
@@ -129,7 +141,7 @@ def test_config_load_success(tmp_path):
 
 
 def test_config_load_failure():
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(Exception):
         fwImageUpload.Config("missing.json")
 
 
@@ -150,16 +162,19 @@ def test_upload_init_success(mock_zip):
 
 @patch("fwImageUpload.zipfile.ZipFile")
 def test_upload_init_failure(mock_zip):
-    mock_zip.side_effect = zipfile.BadZipFile("bad zip")
+    mock_zip.side_effect = Exception("bad zip")
 
-    with pytest.raises(zipfile.BadZipFile):
+    with pytest.raises(Exception):
         fwImageUpload.UploadImageData(MagicMock(), "bad.zip")
 
 
 @patch("fwImageUpload.pydicom.dcmread")
 @patch("fwImageUpload.zipfile.ZipFile")
 def test_upload_images_basic(mock_zip, mock_dcmread, tmp_path):
-    """End-to-end uploadImages test with mocks."""
+    """
+    End-to-end uploadImages test with mocks
+    """
+
     # ---- Setup ZIP ----
     zip_inst = mock_zip.return_value
     zip_inst.namelist.return_value = [
@@ -209,7 +224,9 @@ def test_upload_images_basic(mock_zip, mock_dcmread, tmp_path):
 @patch("fwImageUpload.zipfile.ZipFile")
 def test_upload_images_no_nacc(mock_zip, mock_dcmread, tmp_path):
     zip_inst = mock_zip.return_value
-    zip_inst.namelist.return_value = ["root/NOID/file.dcm"]
+    zip_inst.namelist.return_value = [
+        "root/NOID/file.dcm"
+    ]
 
     fc = MagicMock()
     fc.project = MagicMock()
@@ -306,7 +323,7 @@ def test_main_fatal_error(
         ["prog", "-f", "file.zip"],
     )
 
-    mock_connector.side_effect = ValueError("boom")
+    mock_connector.side_effect = Exception("boom")
 
     with pytest.raises(SystemExit):
         fwImageUpload.main()
