@@ -267,3 +267,157 @@ Enable debug_mode in the config file to generate additional temporary files that
   issues with phase unwrapping and QSM reconstruction. It is recommended to set the bipolar_complex_fit parameter to 1 
   in the config file to perform complex fitting accounting for the discrepancies in the phase offset for odd and even 
   echoes.
+
+
+## Development
+
+This Flywheel gear is containerized and designed to run within the Flywheel
+platform. For local development and testing:
+
+### Prerequisites
+
+- Docker
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Flywheel CLI (`flyw`) for local gear testing and deployment
+
+### Building the Container
+
+Build directly from the Dockerfile:
+
+```bash
+cd qsm-medi
+docker build -t qsm-medi:local .
+```
+
+Or use the legacy neurodocker script (generates and builds):
+
+```bash
+cd qsm-medi
+./create_docker.sh
+```
+
+### Python Development
+
+For working on the gear wrapper (`src/flywheel/run.py`) and preprocessing
+scripts outside the container:
+
+```bash
+cd qsm-medi
+
+# Install dependencies (including dev tools)
+uv sync --group dev
+
+# Run tests
+uv run pytest tests/
+
+# Lint
+uv run ruff check src/flywheel/ src/scripts/
+
+# Format
+uv run ruff format src/flywheel/ src/scripts/
+```
+
+Note: The `hd-bet @ file:///opt/HD-BET` dependency only resolves inside the
+container. For local development, use `uv run --no-project --with pytest pytest`
+or install the other dependencies manually.
+
+### Testing Locally with Flywheel CLI
+
+The gear can be tested locally using the Flywheel CLI (`flyw`):
+
+```bash
+cd qsm-medi
+
+# Build the gear image
+flyw gear build .
+
+# Create a new run configuration
+flyw gear config --new
+
+# Set input file(s)
+flyw gear config --input input_file=path/to/dicom.zip
+
+# Prepare a local run directory
+flyw gear run --prepare -d test/output/local_run
+
+# Execute the gear locally
+flyw gear run test/output/local_run
+```
+
+For dual-zip input (two separate DICOM archives):
+
+```bash
+flyw gear config --new
+flyw gear config \
+  --input input_file=path/to/first.zip \
+  --input input_file_opt=path/to/second.zip
+flyw gear run --prepare -d test/output/local_run_2_zips
+flyw gear run test/output/local_run_2_zips
+```
+
+### Pre-deploy Checks
+
+Before deploying, run these checks:
+
+```bash
+# Lint Python code
+uv run ruff check src/flywheel/ src/scripts/
+
+# Verify formatting
+uv run ruff format --check src/flywheel/ src/scripts/
+
+# Run unit tests
+uv run pytest tests/
+
+# Lint the Dockerfile
+hadolint Dockerfile
+
+# Build the Docker image
+docker build -t qsm-medi:local .
+```
+
+### Deploying to Flywheel
+
+The gear is deployed to `naccdata.flywheel.io` using the Flywheel CLI.
+
+```bash
+# Log in (prompts for API key)
+flyw login
+
+# Validate the gear manifest
+flyw gear --validate manifest.json
+
+# Build and upload the gear
+flyw gear build .
+flyw gear upload
+```
+
+### Standalone Docker Usage (without Flywheel)
+
+The container can also be run directly with mounted volumes for processing
+outside Flywheel. In this mode, mount DICOM or NIfTI data and an output
+directory:
+
+```bash
+# DICOM input
+docker run --rm \
+  -v /path/to/dicoms:/input/dicom_data \
+  -v /path/to/output:/output \
+  qsm-medi:local \
+  -i /input -o /output
+
+# NIfTI input (pre-converted)
+docker run --rm \
+  -v /path/to/niftis:/input/nifti \
+  -v /path/to/output:/output \
+  qsm-medi:local \
+  -i /input -o /output
+
+# With custom parameters
+docker run --rm \
+  -v /path/to/dicoms:/input/dicom_data \
+  -v /path/to/params.json:/input/parameters/qsm_parameters.json \
+  -v /path/to/output:/output \
+  qsm-medi:local \
+  -i /input -o /output -p /input/parameters/qsm_parameters.json
+```
