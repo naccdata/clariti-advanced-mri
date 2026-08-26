@@ -5,20 +5,23 @@ build-backend = "hatchling.build"
 [project]
 name = "qsm-medi"
 version = "2.5.0"
-description = "A Python package for QSM processing and analysis."
+description = "Flywheel gear for QSM processing using MEDI+mSMV pipeline."
 requires-python = ">=3.9"
 dependencies = [
-    "nibabel",
-    "flywheel-sdk",
-    "fw-client",
+    "nibabel>=5.1.0,<6",
+    "flywheel-sdk>=21.3.0",
+    "fw-client>=0.1.0",
     "hd-bet @ file:///opt/HD-BET",
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.uv]
-dev-dependencies = [
+[tool.hatch.build.targets.wheel]
+packages = ["src/flywheel"]
+
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
@@ -27,21 +30,24 @@ dev-dependencies = [
 [tool.ruff]
 line-length = 88
 indent-width = 4
-target-version = "py311"
-extend-exclude = ["src/hd-bet","src/mSMV-vkernel_250813","qsm_optimization","archive"]
+target-version = "py39"
+extend-exclude = ["src/hd-bet", "src/mSMV-vkernel_250813"]
 
 [tool.ruff.lint]
-select = ["A", "B", "E", "W", "F", "I", "RUF", "SIM", "C90", "PLW0406", "COM818", "SLF001"]
+select = ["A", "B", "BLE", "D", "E", "W", "F", "I", "RUF", "SIM", "C90", "PLW0406", "COM818", "SLF001"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = [
-    "--cov=image_uploading",
-    "--cov=qsmxt",
+    "--cov=src/flywheel",
     "--cov-report=html",
-    "--cov-report=term-missing"
+    "--cov-report=term-missing",
 ]
-
-[tool.hatch.build.targets.wheel]
-      packages = ["build"]
