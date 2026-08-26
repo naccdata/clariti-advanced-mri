@@ -11,8 +11,10 @@ import pytest
 # Add src/flywheel to path so we can import the run module
 sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "flywheel"))
 
-# Mock flywheel before importing run (run.py imports flywheel at module level)
-sys.modules["flywheel"] = MagicMock()
+# Mock fw_gear before importing run (run.py imports fw_gear at module level)
+mock_fw_gear = MagicMock()
+sys.modules["fw_gear"] = mock_fw_gear
+sys.modules["fw_gear.context"] = mock_fw_gear.context
 
 import run  # noqa: E402
 
@@ -75,24 +77,18 @@ class TestSafeExtractZip:
 class TestCreateParametersJson:
     """Tests for config-to-JSON serialization."""
 
-    def _make_mock_context(self, config_dict):
-        """Create a mock GearContext with the given config values."""
-        ctx = MagicMock()
-        ctx.config.get = lambda key, default=None: config_dict.get(key, default)
-        return ctx
-
     def test_writes_only_non_none_values(self, tmp_path, monkeypatch):
         """Only config values that are not None appear in the output JSON."""
         output_json = tmp_path / "parameters" / "qsm_parameters.json"
         monkeypatch.setattr(run, "PATH_PARAMETERS_JSON", output_json)
 
-        context = self._make_mock_context({
+        config_opts = {
             "medi_lambda": 1000,
             "pdf_tol": 0.1,
             "debug_mode": 1,
-        })
+        }
 
-        run.create_parameters_json(context)
+        run.create_parameters_json(config_opts)
 
         result = json.loads(output_json.read_text())
         assert result == {
@@ -106,9 +102,7 @@ class TestCreateParametersJson:
         output_json = tmp_path / "parameters" / "qsm_parameters.json"
         monkeypatch.setattr(run, "PATH_PARAMETERS_JSON", output_json)
 
-        context = self._make_mock_context({})
-
-        run.create_parameters_json(context)
+        run.create_parameters_json({})
 
         result = json.loads(output_json.read_text())
         assert result == {}
@@ -118,9 +112,7 @@ class TestCreateParametersJson:
         output_json = tmp_path / "deep" / "nested" / "params.json"
         monkeypatch.setattr(run, "PATH_PARAMETERS_JSON", output_json)
 
-        context = self._make_mock_context({})
-
-        run.create_parameters_json(context)
+        run.create_parameters_json({})
         assert output_json.exists()
 
 

@@ -9,8 +9,7 @@ description = "Flywheel gear for QSM processing using MEDI+mSMV pipeline."
 requires-python = ">=3.9"
 dependencies = [
     "nibabel>=5.1.0,<6",
-    "flywheel-sdk>=21.3.0",
-    "fw-client>=0.1.0",
+    "fw-gear[sdk]~=0.3.0",
     "hd-bet @ file:///opt/HD-BET",
 ]
 

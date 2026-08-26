@@ -21,7 +21,7 @@ import time
 import zipfile
 from pathlib import Path
 
-import flywheel
+from fw_gear.context import GearContext
 
 log = logging.getLogger(__name__)
 
@@ -113,22 +113,22 @@ def safe_extract_zip(zip_path: str, destination: str) -> None:
         zf.extractall(destination)
 
 
-def create_parameters_json(context: flywheel.GearContext) -> None:
-    """Create a parameters JSON file from the Flywheel gear configuration.
+def create_parameters_json(config_opts: dict) -> None:
+    """Create a parameters JSON file from the gear configuration options.
 
     Only includes config values that are not None, allowing the MATLAB
     pipeline to use its own defaults for omitted parameters.
 
     Parameters
     ----------
-    context : flywheel.GearContext
-        The active gear context containing user-provided config values.
+    config_opts : dict
+        The gear config options dictionary from GearContext.
     """
     PATH_PARAMETERS_JSON.parent.mkdir(parents=True, exist_ok=True)
 
     parameters_dict = {}
     for config_variable in CONFIG_VARIABLES:
-        config_value = context.config.get(config_variable)
+        config_value = config_opts.get(config_variable)
         if config_value is not None:
             parameters_dict[config_variable] = config_value
 
@@ -137,61 +137,66 @@ def create_parameters_json(context: flywheel.GearContext) -> None:
     )
 
 
-def main() -> None:
-    """Execute the QSM-MEDI gear workflow."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+def main(context: GearContext) -> None:
+    """Execute the QSM-MEDI gear workflow.
+
+    Parameters
+    ----------
+    context : GearContext
+        The fw-gear context providing config, inputs, and output directory.
+    """
+    config = context.config.opts
 
     input_folder = Path("/flywheel/input")
     dicom_staging = input_folder / "dicom_data"
 
-    with flywheel.GearContext() as context:
-        dicom_zip_paths = [
-            context.get_input_path("input_file"),
-            context.get_input_path("input_file_opt"),
-        ]
-        output_folder = Path(context.output_dir)
+    dicom_zip_paths = [
+        context.config.get_input_path("input_file"),
+        context.config.get_input_path("input_file_opt"),
+    ]
+    output_folder = Path(context.output_dir)
 
-        log.info("Unzipping MEGRE DICOMs: %s", dicom_zip_paths)
-        for i, zip_path in enumerate(dicom_zip_paths):
-            if zip_path is not None:
-                dest = dicom_staging / str(i)
-                dest.mkdir(parents=True, exist_ok=True)
-                safe_extract_zip(zip_path, str(dest))
+    log.info("Unzipping MEGRE DICOMs: %s", dicom_zip_paths)
+    for i, zip_path in enumerate(dicom_zip_paths):
+        if zip_path is not None:
+            dest = dicom_staging / str(i)
+            dest.mkdir(parents=True, exist_ok=True)
+            safe_extract_zip(zip_path, str(dest))
 
-        num_threads_hdbet = context.config.get("num_threads_hdbet", 0)
+    num_threads_hdbet = config.get("num_threads_hdbet", 0)
 
-        create_parameters_json(context)
+    create_parameters_json(config)
 
-        pipeline_command = [
-            "/opt/process_QSM/run.sh",
-            "-i",
-            str(input_folder),
-            "-o",
-            str(output_folder),
-            "-p",
-            str(PATH_PARAMETERS_JSON),
-            "-n",
-            str(num_threads_hdbet),
-        ]
-        returncode = run_command(pipeline_command)
+    pipeline_command = [
+        "/opt/process_QSM/run.sh",
+        "-i",
+        str(input_folder),
+        "-o",
+        str(output_folder),
+        "-p",
+        str(PATH_PARAMETERS_JSON),
+        "-n",
+        str(num_threads_hdbet),
+    ]
+    returncode = run_command(pipeline_command)
 
-        if returncode != 0:
-            raise RuntimeError(
-                "run.sh returned a non-zero exit code. "
-                "Check processing.log for details."
-            )
+    if returncode != 0:
+        raise RuntimeError(
+            "run.sh returned a non-zero exit code. "
+            "Check processing.log for details."
+        )
 
-        if not (output_folder / "QSM.nii.gz").is_file():
-            raise RuntimeError(
-                "Final check failed: QSM.nii.gz was not created. "
-                "Check processing.log for details."
-            )
+    if not (output_folder / "QSM.nii.gz").is_file():
+        raise RuntimeError(
+            "Final check failed: QSM.nii.gz was not created. "
+            "Check processing.log for details."
+        )
 
-        log.info("QSM-MEDI gear completed successfully.")
+    log.info("QSM-MEDI gear completed successfully.")
 
 
 if __name__ == "__main__":
-    main()
+    with GearContext() as gear_context:
+        gear_context.init_logging()
+        gear_context.log_config()
+        main(gear_context)
