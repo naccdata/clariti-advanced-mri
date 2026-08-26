@@ -15,7 +15,7 @@
     "LD_LIBRARY_PATH": "/usr/lib/x86_64-linux-gnu:/opt/MCR-2023b/v915/runtime/glnxa64:/opt/MCR-2023b/v915/bin/glnxa64:/opt/MCR-2023b/v915/sys/os/glnxa64:/opt/MCR-2023b/v915/extern/bin/glnxa64",
     "MATLABCMD": "/opt/MCR-2023b/2023b/toolbox/matlab",
     "MCRROOT": "/opt/MCR-2023b/2023b",
-    "PATH": "/opt/dcm2niix-v1.0.20260416/bin:/opt/process_QSM/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "PATH": "/opt/dcm2niix/bin:/opt/process_QSM/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "PWD": "/opt/process_QSM",
     "UV_CACHE_DIR": "/opt/uv/cache",
     "XAPPLRESDIR": "/opt/MCR-2023b/v915/x11/app-defaults"

@@ -60,31 +60,21 @@ WORKDIR /opt/process_QSM
 ENV PATH="/opt/process_QSM/.venv/bin:$PATH"
 RUN uv sync --no-dev
 
-# dcm2niix (compile from source, clean up build tools after)
-ENV PATH="/opt/dcm2niix-v1.0.20260416/bin:$PATH"
+# dcm2niix (pre-built release binary)
+ENV PATH="/opt/dcm2niix/bin:$PATH"
 RUN apt-get update -qq \
     && apt-get install -y -q --no-install-recommends \
            ca-certificates \
-           cmake \
-           g++ \
-           gcc \
-           git \
-           make \
+           curl \
            pigz \
-           zlib1g-dev \
+           unzip \
     && rm -rf /var/lib/apt/lists/* \
-    && git clone https://github.com/rordenlab/dcm2niix /tmp/dcm2niix \
-    && cd /tmp/dcm2niix \
-    && git fetch --tags \
-    && git checkout v1.0.20260416 \
-    && mkdir /tmp/dcm2niix/build \
-    && cd /tmp/dcm2niix/build \
-    && cmake -DCMAKE_INSTALL_PREFIX:PATH=/opt/dcm2niix-v1.0.20260416 .. \
-    && make -j1 \
-    && make install \
-    && rm -rf /tmp/dcm2niix \
-    && apt-get purge -y --auto-remove cmake g++ gcc git make \
-    && rm -rf /var/lib/apt/lists/*
+    && mkdir -p /opt/dcm2niix/bin \
+    && curl -fsSL -o /tmp/dcm2niix_lnx.zip \
+       https://github.com/rordenlab/dcm2niix/releases/download/v1.0.20260416/dcm2niix_lnx.zip \
+    && unzip -q /tmp/dcm2niix_lnx.zip -d /opt/dcm2niix/bin \
+    && chmod +x /opt/dcm2niix/bin/dcm2niix \
+    && rm /tmp/dcm2niix_lnx.zip
 
 # Pipeline binary and scripts
 COPY ["src/matlab_compiler/pipeline_qsm_v1.4.0/for_redistribution_files_only", \
