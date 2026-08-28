@@ -1,116 +1,202 @@
 #!/usr/bin/env python
+"""Flywheel Gear: QSM-MEDI Processing Pipeline.
+
+This gear entry point:
+1. Extracts DICOM zip archives to a working directory.
+2. Generates a parameters JSON from Flywheel gear configuration.
+3. Launches the QSM-MEDI shell pipeline (run.sh).
+4. Validates that the expected QSM output was produced.
+"""
+
 # SPDX-FileCopyrightText: 2025 Arnold Evia <Arnold_Evia@rush.edu>
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from __future__ import annotations
 
 import json
-import os
+import logging
 import subprocess
 import time
 import zipfile
+from pathlib import Path
 
-import flywheel
+from fw_gear.context import GearContext
 
-path_parameters_json = "/input/parameters/qsm_parameters.json"
+log = logging.getLogger(__name__)
+
+PATH_PARAMETERS_JSON = Path("/input/parameters/qsm_parameters.json")
+
+# Configuration variables passed through to the MATLAB pipeline.
+# Names must match what the pipeline expects in its JSON config.
+CONFIG_VARIABLES = [
+    "load_nifti_common_prefix",
+    "load_negate_every_other_axis",
+    "invert_phase",
+    "method_phase_unwrap",
+    "phase_corr",
+    "csf_thresh_R2s",
+    "csf_flag_erode",
+    "pdf_tol",
+    "pdf_n_cg",
+    "pdf_space",
+    "pdf_n_pad",
+    "prefilter",
+    "bipolar_complex_fit",
+    "debug_mode",
+    "medi_msmv",
+    "medi_lambda",
+    "medi_max_iter",
+    "medi_tol_norm_ratio",
+    "medi_cg_verbose",
+    "medi_cg_max_iter",
+    "medi_cg_tol",
+]
 
 
-def run_command_with_subprocess(command):
-    terminal_env = os.environ.copy()
+def run_command(command: list[str]) -> int:
+    """Run a command, streaming stdout/stderr to the log.
 
-    def stream_process(process):
-        go = process.poll() is None
-        for line in process.stdout:
-            print(line, end="")
-        return go
+    Parameters
+    ----------
+    command : list[str]
+        Command and arguments to execute.
 
+    Returns
+    -------
+    int
+        Process return code.
+    """
     process = subprocess.Popen(
         args=command,
-        env=terminal_env,
         shell=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
     )
+
+    def stream_process(proc: subprocess.Popen) -> bool:
+        go = proc.poll() is None
+        for line in proc.stdout:
+            log.info(line.rstrip())
+        return go
+
     while stream_process(process):
         time.sleep(0.1)
+
     return process.returncode
 
 
-def create_parameters_json_from_flywheel_context(input_context):
-    list_config_variables = [
-        "load_nifti_common_prefix",
-        "load_negate_every_other_axis",
-        "invert_phase",
-        "method_phase_unwrap",
-        "phase_corr",
-        "csf_thresh_R2s",
-        "csf_flag_erode",
-        "pdf_tol",
-        "pdf_n_cg",
-        "pdf_space",
-        "pdf_n_pad",
-        "prefilter",
-        "bipolar_complex_fit",
-        "debug_mode",
-        "medi_msmv",
-        "medi_lambda",
-        "medi_max_iter",
-        "tol_norm_ratio",
-        "medi_cg_verbose",
-        "medi_cg_max_iter",
-        "medi_cg_tol",
-    ]
+def safe_extract_zip(zip_path: str, destination: str) -> None:
+    """Extract a zip archive with zip-slip protection.
 
-    os.makedirs(os.path.dirname(path_parameters_json), exist_ok=False)
+    Parameters
+    ----------
+    zip_path : str
+        Path to the zip file.
+    destination : str
+        Directory to extract into.
+
+    Raises
+    ------
+    ValueError
+        If a zip entry attempts path traversal outside the destination.
+    """
+    dest = Path(destination).resolve()
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        for member in zf.namelist():
+            member_path = (dest / member).resolve()
+            if not str(member_path).startswith(str(dest)):
+                raise ValueError(
+                    f"Zip entry would escape target directory: {member}"
+                )
+        zf.extractall(destination)
+
+
+def create_parameters_json(config_opts: dict) -> None:
+    """Create a parameters JSON file from the gear configuration options.
+
+    Only includes config values that are not None, allowing the MATLAB
+    pipeline to use its own defaults for omitted parameters.
+
+    Parameters
+    ----------
+    config_opts : dict
+        The gear config options dictionary from GearContext.
+    """
+    PATH_PARAMETERS_JSON.parent.mkdir(parents=True, exist_ok=True)
 
     parameters_dict = {}
-    for config_variable in list_config_variables:
-        config_value = input_context.config.get(config_variable)
+    for config_variable in CONFIG_VARIABLES:
+        config_value = config_opts.get(config_variable)
         if config_value is not None:
             parameters_dict[config_variable] = config_value
 
-    with open(path_parameters_json, "w", encoding="utf-8") as f:
-        json.dump(parameters_dict, f, ensure_ascii=False, indent=4)
+    PATH_PARAMETERS_JSON.write_text(
+        json.dumps(parameters_dict, ensure_ascii=False, indent=4), encoding="utf-8"
+    )
 
 
-input_folder = "/flywheel/input"
-unzip_destination = f"{input_folder}/dicom_data"
+def main(context: GearContext) -> None:
+    """Execute the QSM-MEDI gear workflow.
 
+    Parameters
+    ----------
+    context : GearContext
+        The fw-gear context providing config, inputs, and output directory.
+    """
+    config = context.config.opts
 
-with flywheel.GearContext() as context:
-    config = context.config
+    input_folder = Path("/flywheel/input")
+    dicom_staging = input_folder / "dicom_data"
 
-    dicom_megre_zip = []
-    dicom_megre_zip.append(context.get_input_path("input_file"))
-    dicom_megre_zip.append(context.get_input_path("input_file_opt"))
-    out_dir = context.output_dir
+    dicom_zip_paths = [
+        context.config.get_input_path("input_file"),
+        context.config.get_input_path("input_file_opt"),
+    ]
+    output_folder = Path(context.output_dir)
 
-    print(f"Unzipping MEGRE DICOMs: {dicom_megre_zip}")
-    for i in range(len(dicom_megre_zip)):
-        if dicom_megre_zip[i] is not None:
-            unzip_destination_for_i = f"{unzip_destination}/{i}"
-            os.makedirs(unzip_destination_for_i, exist_ok=True)
-            with zipfile.ZipFile(dicom_megre_zip[i], "r") as zf:
-                zf.extractall(unzip_destination_for_i)
+    log.info("Unzipping MEGRE DICOMs: %s", dicom_zip_paths)
+    for i, zip_path in enumerate(dicom_zip_paths):
+        if zip_path is not None:
+            dest = dicom_staging / str(i)
+            dest.mkdir(parents=True, exist_ok=True)
+            safe_extract_zip(zip_path, str(dest))
 
-    output_folder = context.output_dir
+    num_threads_hdbet = config.get("num_threads_hdbet", 0)
 
-    num_threads_hdbet = context.config.get("num_threads_hdbet")
-    if num_threads_hdbet is None:
-        num_threads_hdbet = 0
+    create_parameters_json(config)
 
-    create_parameters_json_from_flywheel_context(context)
-    pipeline_command = (
-        f"/opt/process_QSM/run.sh -i {input_folder} -o {output_folder} "
-        f"-p {path_parameters_json} -n {num_threads_hdbet}"
-    ).split()
-    returncode = run_command_with_subprocess(pipeline_command)
+    pipeline_command = [
+        "/opt/process_QSM/run.sh",
+        "-i",
+        str(input_folder),
+        "-o",
+        str(output_folder),
+        "-p",
+        str(PATH_PARAMETERS_JSON),
+        "-n",
+        str(num_threads_hdbet),
+    ]
+    returncode = run_command(pipeline_command)
 
     if returncode != 0:
-        raise Exception("ERROR: run.sh returned a non-zero exit code. See error above")
-
-    if not os.path.isfile(f"{output_folder}/QSM.nii.gz"):
-        raise Exception(
-            "ERROR: Final check failed - QSM image was not created. See error above"
+        raise RuntimeError(
+            "run.sh returned a non-zero exit code. "
+            "Check processing.log for details."
         )
+
+    if not (output_folder / "QSM.nii.gz").is_file():
+        raise RuntimeError(
+            "Final check failed: QSM.nii.gz was not created. "
+            "Check processing.log for details."
+        )
+
+    log.info("QSM-MEDI gear completed successfully.")
+
+
+if __name__ == "__main__":
+    with GearContext() as gear_context:
+        gear_context.init_logging()
+        gear_context.log_config()
+        main(gear_context)

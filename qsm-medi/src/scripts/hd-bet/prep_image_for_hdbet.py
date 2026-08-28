@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Arnold Evia <Arnold_Evia@rush.edu>
 #
 # SPDX-License-Identifier: BSD-3-Clause
+"""Prepare magnitude image for HD-BET by reorienting to MNI standard axes."""
 
 import os
 
