@@ -81,7 +81,6 @@ COPY ["src/matlab_compiler/pipeline_qsm_v1.4.0/for_redistribution_files_only", \
       "/opt/process_QSM/for_redistribution_files_only"]
 RUN chmod -R 755 /opt/process_QSM/for_redistribution_files_only
 COPY ["src/scripts", "/opt/process_QSM"]
-COPY ["src/config", "/config"]
 COPY ["src/flywheel/run.py", "/opt/process_QSM/flywheel/run.py"]
 
 # Non-root execution

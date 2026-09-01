@@ -1,0 +1,19 @@
+# Vendored MATLAB pipeline source — not used at build time (compiled binary
+# ships via src/matlab_compiler/pipeline_qsm_v1.4.0/for_redistribution_files_only)
+src/mSMV-vkernel_250813/
+
+# MATLAB compilation scripts (source .m files, not needed in container)
+src/matlab_compiler/scripts/
+
+# Local dev artifacts
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# Developer scratchpad
+src/flywheel/fw_cmds.sh
+
+# Conda env file (gear uses uv)
+src/environment.yml
