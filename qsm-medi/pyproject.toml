@@ -11,10 +11,24 @@ dependencies = [
     "nibabel>=5.1.0,<6",
     "fw-gear[sdk]~=0.3.0",
     "hd-bet @ file:///opt/HD-BET",
+    # Pinned to the version validated in the container build. HD-BET declares an
+    # unbounded `torch>=0.4.1`; declaring torch directly (a) pins it for
+    # reproducibility and (b) forces the CPU wheel via the source below. The
+    # pipeline runs hd-bet with `-device cpu`, so the CUDA build's bundled
+    # nvidia/cuDNN libraries (several GB) are never used.
+    "torch==2.8.0",
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/flywheel"]
