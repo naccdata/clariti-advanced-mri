@@ -282,11 +282,13 @@ platform. For local development and testing:
 
 ### Building the Container
 
-Build directly from the Dockerfile:
+Build directly from the Dockerfile. The image must be built for `linux/amd64`
+(the MATLAB Runtime ships x86_64 binaries only). On an arm64 host such as Apple
+Silicon, Docker builds via emulation:
 
 ```bash
 cd qsm-medi
-docker build -t qsm-medi:local .
+docker build --platform linux/amd64 -t qsm-medi:local .
 ```
 
 Or use the legacy neurodocker script (generates and builds):
@@ -372,8 +374,8 @@ uv run pytest tests/
 # Lint the Dockerfile
 hadolint Dockerfile
 
-# Build the Docker image
-docker build -t qsm-medi:local .
+# Build the Docker image (must target linux/amd64)
+docker build --platform linux/amd64 -t qsm-medi:local .
 ```
 
 ### Deploying to Flywheel

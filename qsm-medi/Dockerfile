@@ -1,9 +1,12 @@
 # QSM-MEDI Flywheel Gear
 # Base image: Ubuntu 22.04 (jammy). MCR R2023b requires glibc >= 2.31.
-# Platform is pinned to linux/amd64: the MATLAB Runtime for Linux ships x86_64
-# binaries only (no arm64 installer), and Flywheel runs on x86_64. Building on
-# an arm64 host (e.g. Apple Silicon) requires emulation via this platform flag.
-FROM --platform=linux/amd64 ubuntu:22.04
+#
+# This image MUST be built for linux/amd64: the MATLAB Runtime for Linux ships
+# x86_64 binaries only (no arm64 installer), and Flywheel runs on x86_64. On an
+# arm64 host (e.g. Apple Silicon) build with an explicit platform flag:
+#     docker build --platform linux/amd64 ...
+# CI passes this flag; see .github/workflows/build-qsm-medi.yml and the README.
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG="en_US.UTF-8" \
