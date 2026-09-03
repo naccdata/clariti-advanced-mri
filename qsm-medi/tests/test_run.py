@@ -77,10 +77,9 @@ class TestSafeExtractZip:
 class TestCreateParametersJson:
     """Tests for config-to-JSON serialization."""
 
-    def test_writes_only_non_none_values(self, tmp_path, monkeypatch):
+    def test_writes_only_non_none_values(self, tmp_path):
         """Only config values that are not None appear in the output JSON."""
         output_json = tmp_path / "parameters" / "qsm_parameters.json"
-        monkeypatch.setattr(run, "PATH_PARAMETERS_JSON", output_json)
 
         config_opts = {
             "medi_lambda": 1000,
@@ -88,7 +87,7 @@ class TestCreateParametersJson:
             "debug_mode": 1,
         }
 
-        run.create_parameters_json(config_opts)
+        run.create_parameters_json(config_opts, output_json)
 
         result = json.loads(output_json.read_text())
         assert result == {
@@ -97,22 +96,20 @@ class TestCreateParametersJson:
             "debug_mode": 1,
         }
 
-    def test_writes_empty_dict_when_all_none(self, tmp_path, monkeypatch):
+    def test_writes_empty_dict_when_all_none(self, tmp_path):
         """When no config values are set, writes an empty JSON object."""
         output_json = tmp_path / "parameters" / "qsm_parameters.json"
-        monkeypatch.setattr(run, "PATH_PARAMETERS_JSON", output_json)
 
-        run.create_parameters_json({})
+        run.create_parameters_json({}, output_json)
 
         result = json.loads(output_json.read_text())
         assert result == {}
 
-    def test_creates_parent_directories(self, tmp_path, monkeypatch):
+    def test_creates_parent_directories(self, tmp_path):
         """Parent directories are created if they don't exist."""
         output_json = tmp_path / "deep" / "nested" / "params.json"
-        monkeypatch.setattr(run, "PATH_PARAMETERS_JSON", output_json)
 
-        run.create_parameters_json({})
+        run.create_parameters_json({}, output_json)
         assert output_json.exists()
 
 

@@ -25,8 +25,6 @@ from fw_gear.context import GearContext
 
 log = logging.getLogger(__name__)
 
-PATH_PARAMETERS_JSON = Path("/input/parameters/qsm_parameters.json")
-
 # Configuration variables passed through to the MATLAB pipeline.
 # Names must match what the pipeline expects in its JSON config.
 CONFIG_VARIABLES = [
@@ -113,8 +111,8 @@ def safe_extract_zip(zip_path: str, destination: str) -> None:
         zf.extractall(destination)
 
 
-def create_parameters_json(config_opts: dict) -> None:
-    """Create a parameters JSON file from the gear configuration options.
+def create_parameters_json(config_opts: dict, params_path: Path) -> None:
+    """Write a parameters JSON file from the gear configuration options.
 
     Only includes config values that are not None, allowing the MATLAB
     pipeline to use its own defaults for omitted parameters.
@@ -123,8 +121,10 @@ def create_parameters_json(config_opts: dict) -> None:
     ----------
     config_opts : dict
         The gear config options dictionary from GearContext.
+    params_path : Path
+        Destination path for the parameters JSON file.
     """
-    PATH_PARAMETERS_JSON.parent.mkdir(parents=True, exist_ok=True)
+    params_path.parent.mkdir(parents=True, exist_ok=True)
 
     parameters_dict = {}
     for config_variable in CONFIG_VARIABLES:
@@ -132,7 +132,7 @@ def create_parameters_json(config_opts: dict) -> None:
         if config_value is not None:
             parameters_dict[config_variable] = config_value
 
-    PATH_PARAMETERS_JSON.write_text(
+    params_path.write_text(
         json.dumps(parameters_dict, ensure_ascii=False, indent=4), encoding="utf-8"
     )
 
@@ -147,8 +147,12 @@ def main(context: GearContext) -> None:
     """
     config = context.config.opts
 
-    input_folder = Path("/flywheel/input")
-    dicom_staging = input_folder / "dicom_data"
+    # Flywheel provides a scratch directory (/flywheel/v0/work). The pipeline
+    # stages extracted DICOMs and the generated parameters file here; run.sh
+    # consumes them via its -i/-p arguments.
+    work_dir = context.work_dir
+    dicom_staging = work_dir / "dicom_data"
+    params_path = work_dir / "parameters" / "qsm_parameters.json"
 
     dicom_zip_paths = [
         context.config.get_input_path("input_file"),
@@ -165,16 +169,16 @@ def main(context: GearContext) -> None:
 
     num_threads_hdbet = config.get("num_threads_hdbet", 0)
 
-    create_parameters_json(config)
+    create_parameters_json(config, params_path)
 
     pipeline_command = [
         "/opt/process_QSM/run.sh",
         "-i",
-        str(input_folder),
+        str(work_dir),
         "-o",
         str(output_folder),
         "-p",
-        str(PATH_PARAMETERS_JSON),
+        str(params_path),
         "-n",
         str(num_threads_hdbet),
     ]
