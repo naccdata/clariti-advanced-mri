@@ -1,0 +1,28 @@
+name: Test QSM-MEDI gear
+
+# Runs unit tests and lint for the qsm-medi gear wrapper.
+# Does not build the Docker image (the MCR download makes that expensive; image
+# build/publish belongs with the deploy workflow, once that exists).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'qsm-medi/**'
+      - '.github/workflows/test-qsm-medi.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: pipx install uv || pip install uv
+
+      - name: Run unit tests
+        working-directory: qsm-medi
+        run: uv run --no-project --with pytest pytest tests/ -o "addopts="
+
+      - name: Lint
+        working-directory: qsm-medi
+        run: uv run --no-project --with ruff ruff check src/flywheel/ src/scripts/

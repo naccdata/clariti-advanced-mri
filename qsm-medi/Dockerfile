@@ -1,5 +1,11 @@
 # QSM-MEDI Flywheel Gear
 # Base image: Ubuntu 22.04 (jammy). MCR R2023b requires glibc >= 2.31.
+#
+# This image MUST be built for linux/amd64: the MATLAB Runtime for Linux ships
+# x86_64 binaries only (no arm64 installer), and Flywheel runs on x86_64. On an
+# arm64 host (e.g. Apple Silicon) build with an explicit platform flag:
+#     docker build --platform linux/amd64 ...
+# CI passes this flag; see .github/workflows/build-qsm-medi.yml and the README.
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -81,14 +87,20 @@ COPY ["src/matlab_compiler/pipeline_qsm_v1.4.0/for_redistribution_files_only", \
       "/opt/process_QSM/for_redistribution_files_only"]
 RUN chmod -R 755 /opt/process_QSM/for_redistribution_files_only
 COPY ["src/scripts", "/opt/process_QSM"]
-COPY ["src/config", "/config"]
 COPY ["src/flywheel/run.py", "/opt/process_QSM/flywheel/run.py"]
+
+# Flywheel gear base directory. At runtime Flywheel mounts input/ and output/
+# here, and fw-gear creates work/. The manifest is expected at this path.
+ENV FLYWHEEL=/flywheel/v0
+WORKDIR ${FLYWHEEL}
+COPY ["manifest.json", "${FLYWHEEL}/manifest.json"]
 
 # Non-root execution
 RUN useradd -m -s /bin/bash flywheel \
-    && chown -R flywheel:flywheel /opt/process_QSM \
-    && mkdir -p /flywheel/input /flywheel/output /input/parameters \
-    && chown -R flywheel:flywheel /flywheel /input
+    && mkdir -p ${FLYWHEEL} \
+    && chown -R flywheel:flywheel /opt/process_QSM ${FLYWHEEL}
 USER flywheel
 
+# Flywheel invokes the manifest `command` (run.py). The entrypoint is used
+# only for standalone `docker run` (see README).
 ENTRYPOINT ["/opt/process_QSM/run.sh"]
