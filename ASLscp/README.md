@@ -146,7 +146,7 @@ docker run -v /path/to/input:/flywheel/v0/input \
 |--------|-------------|
 | `-a` | Path to ASL DICOM zip or NIfTI file |
 | `-m` | Path to M0 DICOM zip or NIfTI file |
-| `-t` | Path to T1w xip or NIfTI file. |
+| `-t` | Path to T1w zip or NIfTI file. |
 | `-l` | Labeling duration (microseconds) |
 | `-p` | Post-labeling delay (microseconds) |
 | `-n` | Number of background suppressions |
