@@ -1,9 +1,13 @@
 import os
 import argparse
+import logging
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer, PageBreak
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+logger = logging.getLogger("aslscp.pdf")
+
 
 def read_formatted_file(file_path):
     try:
@@ -40,10 +44,10 @@ def generate_pdf(formatted_data, segmentation_images, output_path, mean_cbf_img=
 
     
     # === Injected block: metadata under the title ===
-    # Tries to read "metadata.txt" from the same directory as the output PDF.
-    # Each line should be in "Key: Value" format.
+    # Tries to read "metadata.json" from the same directory as the output PDF.
+    # The file's header section is in "Key: Value" format.
     try:
-        meta_file = os.path.join(os.path.dirname(output_path), "metadata.txt")
+        meta_file = os.path.join(os.path.dirname(output_path), "metadata.json")
         if os.path.exists(meta_file):
             with open(meta_file, "r") as _mf:
                 _lines = [ln.strip() for ln in _mf.read().strip().splitlines() if ln.strip()]
@@ -72,9 +76,9 @@ def generate_pdf(formatted_data, segmentation_images, output_path, mean_cbf_img=
             ]))
             elements.append(_table)
             elements.append(Spacer(1, 18))
-    except Exception as _e:
-        # Fail silently to preserve original behavior
-        pass
+    except (OSError, ValueError) as _e:
+        # Metadata panel is optional; log and continue building the report.
+        logger.warning(f"Could not render metadata panel from {meta_file!r}: {_e}")
 
     # === End injected block ===
 # Add mean_CBF and qT1 images if provided

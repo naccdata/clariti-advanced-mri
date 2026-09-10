@@ -60,7 +60,7 @@ with flywheel.GearContext() as context:
                 # Take the first acquisition or implement logic to select the right one
                 acquisition_label = acquisitions[0].label
                 logger.info(f"Multiple acquisitions found, using: {acquisition_label}")
-    except Exception as e:
+    except (KeyError, AttributeError, flywheel.rest.ApiException) as e:
         logger.warning(f"Could not determine acquisition label: {e}")
         acquisition_label = "Unknown"
 
@@ -99,8 +99,8 @@ with flywheel.GearContext() as context:
         
         logger.info(f"Metadata written to: {INFO_OUT}")
         logger.info(f"Metadata content: {metadata}")
-        
-    except Exception as e:
+
+    except OSError as e:
         logger.error(f"Failed to write metadata file: {e}")
         raise
 
