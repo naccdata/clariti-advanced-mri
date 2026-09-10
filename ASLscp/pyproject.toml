@@ -16,7 +16,7 @@ dependencies = [
     "nibabel",
     "matplotlib",
     "transforms3d",
-    "flywheel-sdk",
+    "fw-gear[sdk]~=0.3.0",
     "aspose-words",
     "reportlab",
     "nilearn",

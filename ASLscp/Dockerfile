@@ -100,7 +100,7 @@ RUN pip3 install scipy && \
     pip3 install nibabel && \
     pip3 install matplotlib && \
     pip3 install transforms3d && \
-    pip3 install flywheel-sdk && \
+    pip3 install "fw-gear[sdk]~=0.3.0" && \
     pip3 install aspose-words && \
     pip3 install reportlab && \
     pip3 install nilearn && \

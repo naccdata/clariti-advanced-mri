@@ -1,15 +1,21 @@
-import sys
-import os
-import logging
-import flywheel
-import json
-import glob
-import shutil
-from pathlib import Path
-from datetime import datetime
-import argparse
+"""Extract Flywheel run metadata and write it to the pipeline work directory.
 
-print(sys.path)
+Called by pipeline_singlePLD.sh as:
+    python3 flywheel_context.py -dir <work_dir>
+
+Uses the fw-gear GearContext (rather than the raw flywheel SDK GearContext) to
+obtain the SDK client and the destination container, then walks the
+subject/session/project hierarchy to record run metadata as metadata.json.
+"""
+
+import os
+import json
+import logging
+import argparse
+from datetime import datetime
+
+import flywheel
+from fw_gear.context import GearContext
 
 # get directory of metadata file
 parser = argparse.ArgumentParser(description='get location of metadata file')
@@ -21,11 +27,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('aslscp')
 logger.info("=======: ASL gear :=======")
 
-with flywheel.GearContext() as context:
+with GearContext() as context:
     # Setup basic logging
     context.init_logging()
-    config = context.config
-    analysis_id = context.destination['id']
 
     # Use the working directory passed in by the pipeline. Fall back to the
     # gear output dir if -dir was not supplied.
@@ -34,9 +38,12 @@ with flywheel.GearContext() as context:
     else:
         workdir = str(context.output_dir)
 
-    # Get relevant container objects
-    fw = flywheel.Client(context.get_input('api_key')['key'])
-    analysis_container = fw.get(analysis_id)
+    # SDK client (built from the api-key input) and destination container.
+    fw = context.client
+    analysis_container = context.config.get_destination_container()
+    analysis_id = analysis_container.id
+
+    # Walk the container hierarchy for labels.
     project_container = fw.get(analysis_container.parents['project'])
     session_container = fw.get(analysis_container.parent['id'])
     subject_container = fw.get(session_container.parents['subject'])
