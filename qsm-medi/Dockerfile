@@ -1,16 +1,23 @@
 # QSM-MEDI Flywheel Gear
-# Base image: Ubuntu 22.04 (jammy). MCR R2023b requires glibc >= 2.31.
+# Base image: MathWorks prebuilt MATLAB Runtime R2023b (Ubuntu 22.04 based).
+# The MCR ships pre-installed at /opt/matlabruntime/R2023b, so there is no
+# download/install step at build time. The compiled `pipeline_qsm` binary is
+# locked to R2023b (v23.2); changing the MCR release requires recompiling the
+# binary under the matching MATLAB. Pinned by digest for reproducibility.
 #
 # This image MUST be built for linux/amd64: the MATLAB Runtime for Linux ships
-# x86_64 binaries only (no arm64 installer), and Flywheel runs on x86_64. On an
+# x86_64 binaries only (no arm64 image), and Flywheel runs on x86_64. On an
 # arm64 host (e.g. Apple Silicon) build with an explicit platform flag:
 #     docker build --platform linux/amd64 ...
 # CI passes this flag; see .github/workflows/build-qsm-medi.yml and the README.
-FROM ubuntu:22.04
+FROM containers.mathworks.com/matlab-runtime@sha256:3441eaf9691d81d96322169ffb7a26d7fda2f4b4a9ae3a49d0ac408b05472f25
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG="en_US.UTF-8" \
     LC_ALL="en_US.UTF-8"
+
+# Agree to the MATLAB Runtime license (required to use the runtime image).
+ENV AGREE_TO_MATLAB_RUNTIME_LICENSE=yes
 
 # Locale setup and base utilities
 RUN apt-get update -qq \
@@ -26,32 +33,13 @@ RUN apt-get update -qq \
     && dpkg-reconfigure --frontend=noninteractive locales \
     && update-locale LANG="en_US.UTF-8"
 
-# MATLAB Compiler Runtime R2023b (Update 9)
-ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/opt/MCR-2023b/v915/runtime/glnxa64:/opt/MCR-2023b/v915/bin/glnxa64:/opt/MCR-2023b/v915/sys/os/glnxa64:/opt/MCR-2023b/v915/extern/bin/glnxa64" \
-    MATLABCMD="/opt/MCR-2023b/2023b/toolbox/matlab" \
-    XAPPLRESDIR="/opt/MCR-2023b/v915/x11/app-defaults" \
-    MCRROOT="/opt/MCR-2023b/2023b"
-
-RUN export TMPDIR="$(mktemp -d)" \
-    && apt-get update -qq \
-    && apt-get install -y -q --no-install-recommends \
-           bc \
-           curl \
-           dbus-x11 \
-           libncurses5 \
-           libxext6 \
-           libxmu6 \
-           libxpm-dev \
-           libxt6 \
-           openjdk-8-jre \
-           unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && echo "Downloading MATLAB Compiler Runtime ..." \
-    && curl -o "$TMPDIR/mcr.zip" https://ssd.mathworks.com/supportfiles/downloads/R2023b/Release/9/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2023b_Update_9_glnxa64.zip \
-    && unzip -q "$TMPDIR/mcr.zip" -d "$TMPDIR/mcrtmp" \
-    && "$TMPDIR/mcrtmp/install" -destinationFolder /opt/MCR-2023b -mode silent -agreeToLicense yes \
-    && rm -rf "$TMPDIR" \
-    && unset TMPDIR
+# MATLAB Compiler Runtime R2023b — pre-installed by the base image at
+# /opt/matlabruntime/R2023b. The compiled launcher (run_pipeline_qsm.sh) derives
+# its own LD_LIBRARY_PATH from the MCRROOT argument it is passed at runtime; the
+# values below mirror the runtime's expected layout for consistency.
+ENV MCRROOT="/opt/matlabruntime/R2023b" \
+    XAPPLRESDIR="/opt/matlabruntime/R2023b/x11/app-defaults" \
+    LD_LIBRARY_PATH="/opt/matlabruntime/R2023b/runtime/glnxa64:/opt/matlabruntime/R2023b/bin/glnxa64:/opt/matlabruntime/R2023b/sys/os/glnxa64:/opt/matlabruntime/R2023b/sys/opengl/lib/glnxa64:/opt/matlabruntime/R2023b/extern/bin/glnxa64"
 
 # Pin uv from official distroless image for reproducibility
 COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /uvx /bin/
