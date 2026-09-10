@@ -1,0 +1,274 @@
+name: Deploy QSM-MEDI gear
+
+# Builds the qsm-medi gear image and promotes it through Flywheel instances.
+#
+# Deploys are a fork-only concern: upstream (rt-ward/Advanced-MRI) owns the gear
+# and pipeline code, but releases are managed here. Guards that keep this from
+# running outside the fork:
+#   1. The owner gate on each job (explicit, readable).
+#   2. Per-gear-environment-scoped FLYWHEEL API keys that only exist in this fork.
+#   3. The AWS OIDC role trust policy, scoped to this gear's GitHub environments
+#      (enforced AWS-side) — so only this gear's jobs can assume its roles.
+#
+# Triggers are deliberate, never automatic: a `qsm-medi-v*` tag drives a
+# release, and workflow_dispatch allows manual redeploys. Merges from upstream
+# that touch qsm-medi/** do NOT trigger a deploy (that is the test workflow's
+# job) — only an explicit tag or dispatch does.
+#
+# Promotion model (build once, install from ECR to each exchange):
+#   - deploy-sandbox builds the image once, pushes it to ECR
+#     (clariti/qsm-medi), and installs the gear to the sandbox exchange from
+#     ECR. The pushed digest is recorded for traceability.
+#   - deploy-production waits for a required reviewer, then installs the same
+#     gear (same ECR image) to the production exchange from ECR. No rebuild.
+# Both instances use `gear install` from ECR — `gear upload` is not used, so
+# there is no build in either FW step and no per-instance image divergence.
+on:
+  push:
+    tags:
+      - 'qsm-medi-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Gear version to deploy (must match manifest/pyproject, e.g. 2.5.0)'
+        required: true
+        type: string
+
+permissions:
+  id-token: write   # required for AWS OIDC federation
+  contents: read
+
+env:
+  # Shared-services account 380366436539, us-west-2. ECR repo and OIDC roles
+  # provisioned via Terraform (see scratch/gear-deploy-aws-requirements.md).
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 380366436539.dkr.ecr.us-west-2.amazonaws.com
+  ECR_REPOSITORY: clariti/qsm-medi
+  # Two roles, split by capability (least privilege):
+  #   push role  -> sandbox job builds and pushes to ECR
+  #   pull role  -> production installs from ECR (read-only)
+  AWS_PUSH_ROLE_ARN: arn:aws:iam::380366436539:role/clariti-qsm-medi-push
+  AWS_PULL_ROLE_ARN: arn:aws:iam::380366436539:role/clariti-qsm-medi-pull
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Sandbox: automatic on tag. Builds, pushes to ECR, uploads to sandbox FW.
+  # ---------------------------------------------------------------------------
+  deploy-sandbox:
+    if: github.repository == 'naccdata/clariti-advanced-mri'
+    runs-on: ubuntu-latest  # native x86_64: MCR is x86_64-only, no emulation
+    environment: qsm-medi-sandbox  # per-gear env; no protection rule -> runs through
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Resolve the version from either the tag (`qsm-medi-v<version>`) or the
+      # dispatch input.
+      - name: Resolve target version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${GITHUB_REF_NAME#qsm-medi-v}"
+          else
+            version="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Deploying qsm-medi version: $version"
+
+      # Guard: the target version must match manifest.json, pyproject.toml, and
+      # run.sh (PIPELINE_VERSION). Enforces the review standard that these stay
+      # in lockstep, and prevents deploying a tag that disagrees with the source.
+      - name: Verify version consistency
+        working-directory: qsm-medi
+        run: |
+          target="${{ steps.version.outputs.version }}"
+          manifest=$(jq -r '.version' manifest.json)
+          pyproject=$(grep -oP '^version = "\K[^"]+' pyproject.toml)
+          runsh=$(grep -oP 'PIPELINE_VERSION="\K[^"]+' src/scripts/run.sh)
+          # The manifest also embeds the version in the image tag and the ECR
+          # rootfs-url; a stale tag there would point install at the wrong image.
+          builder_img=$(jq -r '.custom["gear-builder"].image' manifest.json)   # clariti/qsm-medi:<v>
+          rootfs_url=$(jq -r '.exchange["rootfs-url"]' manifest.json)          # <ecr>/clariti/qsm-medi:<v>
+          builder_tag="${builder_img##*:}"
+          rootfs_tag="${rootfs_url##*:}"
+
+          echo "target (tag/input):        $target"
+          echo "manifest.json version:     $manifest"
+          echo "pyproject.toml:            $pyproject"
+          echo "run.sh:                    $runsh"
+          echo "gear-builder.image tag:    $builder_tag"
+          echo "exchange.rootfs-url tag:   $rootfs_tag"
+
+          fail=0
+          [ "$target" = "$manifest" ] || { echo "::error::manifest.json version ($manifest) != target ($target)"; fail=1; }
+          [ "$target" = "$pyproject" ] || { echo "::error::pyproject.toml ($pyproject) != target ($target)"; fail=1; }
+          [ "$target" = "$runsh" ] || { echo "::error::run.sh ($runsh) != target ($target)"; fail=1; }
+          [ "$target" = "$builder_tag" ] || { echo "::error::gear-builder.image tag ($builder_tag) != target ($target)"; fail=1; }
+          [ "$target" = "$rootfs_tag" ] || { echo "::error::exchange.rootfs-url tag ($rootfs_tag) != target ($target)"; fail=1; }
+          [ "$fail" = "0" ] || exit 1
+
+      # Sanity check: the fork owns a few manifest fields that upstream does NOT
+      # carry (upstream leaves exchange:null, a non-ECR builder image, and no
+      # private flag). An upstream pull can silently revert these, so validate
+      # them here BEFORE any build — catching the exact drift the CONTRIBUTING
+      # reconcile step guards against.
+      - name: Sanity-check fork deploy fields in manifest
+        working-directory: qsm-medi
+        env:
+          EXPECTED_ECR_HOST: 380366436539.dkr.ecr.us-west-2.amazonaws.com
+          EXPECTED_ECR_REPO: clariti/qsm-medi
+        run: |
+          target="${{ steps.version.outputs.version }}"
+          builder_img=$(jq -r '.custom["gear-builder"].image' manifest.json)
+          rootfs_url=$(jq -r '.exchange["rootfs-url"] // ""' manifest.json)
+          private=$(jq -r '.custom.flywheel.private' manifest.json)
+
+          echo "gear-builder.image:   $builder_img"
+          echo "exchange.rootfs-url:  $rootfs_url"
+          echo "custom.flywheel.private: $private"
+
+          fail=0
+          # Version must be a clean release semver (MAJOR.MINOR.PATCH, digits
+          # only) — the fork deploys release tags, not pre-releases or build
+          # metadata. This rejects e.g. 2.5.1-beta, 2.5.1-rc1, 2.5.1+build,
+          # v2.5.1, or 2.5 that an upstream pull or a bad tag could introduce.
+          if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::deploy version ($target) is not a clean release semver (expected MAJOR.MINOR.PATCH); the fork deploys release tags only"
+            fail=1
+          fi
+          # Builder image must be the fork's ECR repo, not upstream's registry.
+          [ "$builder_img" = "${EXPECTED_ECR_REPO}:${target}" ] \
+            || { echo "::error::gear-builder.image ($builder_img) != ${EXPECTED_ECR_REPO}:${target} (did an upstream pull revert it?)"; fail=1; }
+          # rootfs-url must point at the fork's ECR (upstream leaves this null).
+          [ "$rootfs_url" = "${EXPECTED_ECR_HOST}/${EXPECTED_ECR_REPO}:${target}" ] \
+            || { echo "::error::exchange.rootfs-url ($rootfs_url) != ${EXPECTED_ECR_HOST}/${EXPECTED_ECR_REPO}:${target} (upstream leaves exchange:null; restore the fork value)"; fail=1; }
+          # Private gear flag must be set for the ECR-hosted install path.
+          [ "$private" = "true" ] \
+            || { echo "::error::custom.flywheel.private ($private) must be true for the fork's ECR-hosted deploy"; fail=1; }
+          [ "$fail" = "0" ] || exit 1
+          echo "Manifest fork deploy fields OK."
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The MathWorks base layer is large; ubuntu-latest may need headroom.
+      # Measure on the first real run and drop this if it proves unnecessary.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_PUSH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build once, push to ECR. Digest recorded for traceability; both
+      # instances install this same image from ECR by name/version.
+      - name: Build and push image (linux/amd64)
+        id: build
+        working-directory: qsm-medi
+        run: |
+          image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ steps.version.outputs.version }}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --push \
+            --metadata-file /tmp/build-meta.json \
+            -t "$image" \
+            .
+          digest=$(jq -r '."containerimage.digest"' /tmp/build-meta.json)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${ECR_REPOSITORY}@${digest}"
+
+      # Install to the sandbox exchange from ECR — same mechanism as production,
+      # so both instances reference the identical ECR image and neither rebuilds.
+      # Using `gear install` (not `gear upload`) throughout avoids any question
+      # of whether the ECR/private manifest keys interfere with upload.
+      - name: Install Flywheel CLI
+        run: |
+          export FW_CLI_INSTALL_DIR="$HOME/.local/bin"
+          mkdir -p "$FW_CLI_INSTALL_DIR"
+          curl https://storage.googleapis.com/flywheel-dist/fw-cli/stable/install.sh | bash
+          echo "$FW_CLI_INSTALL_DIR" >> "$GITHUB_PATH"
+
+      # Gearbot API key from SSM (sandbox instance). The key value embeds the
+      # site (e.g. naccdata.flywheel.io:<key>), so login targets sandbox by
+      # virtue of which parameter we read. SecureString encrypted under
+      # alias/nacc-ci-secrets; the push role grants ssm:GetParameter + kms:Decrypt.
+      - name: Fetch gearbot key (sandbox) from SSM
+        id: fwkey
+        run: |
+          key=$(aws ssm get-parameter --name "${SSM_SANDBOX_KEY_PARAM}" --with-decryption --query 'Parameter.Value' --output text)
+          echo "::add-mask::$key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+        env:
+          SSM_SANDBOX_KEY_PARAM: /sandbox/flywheel/nacc-admin/apikey
+
+      - name: Log in to sandbox Flywheel
+        run: FW_CLI_API_KEY="${{ steps.fwkey.outputs.key }}" flyw auth login
+
+      # Install to sandbox exchange from ECR. The gear's manifest (baked into the
+      # ECR image) must carry exchange.rootfs-url + custom.flywheel.private=true
+      # so install pulls from ECR.
+      # TODO(flywheel): VALIDATE against sandbox that `gear install -n/-v`
+      # registers the ECR-hosted gear onto this instance's exchange (the CLI help
+      # does not make clear whether install can publish-from-ECR or only installs
+      # a gear already on the exchange).
+      - name: Install gear to sandbox from ECR
+        run: flyw gear install --yes -n qsm-medi -v "${{ steps.version.outputs.version }}"
+
+  # ---------------------------------------------------------------------------
+  # Production: gated behind a required reviewer on the production environment.
+  # Installs the same ECR image to the production exchange. Never rebuilds.
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    needs: deploy-sandbox
+    if: github.repository == 'naccdata/clariti-advanced-mri'
+    runs-on: ubuntu-latest
+    environment: qsm-medi-production  # per-gear env; required-reviewer rule pauses for approval
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Pull-only role: production never writes to ECR.
+          role-to-assume: ${{ env.AWS_PULL_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install Flywheel CLI
+        run: |
+          export FW_CLI_INSTALL_DIR="$HOME/.local/bin"
+          mkdir -p "$FW_CLI_INSTALL_DIR"
+          curl https://storage.googleapis.com/flywheel-dist/fw-cli/stable/install.sh | bash
+          echo "$FW_CLI_INSTALL_DIR" >> "$GITHUB_PATH"
+
+      # Gearbot API key from SSM (production instance). SecureString encrypted
+      # under alias/nacc-ci-secrets; the pull role grants ssm:GetParameter +
+      # kms:Decrypt.
+      - name: Fetch gearbot key (production) from SSM
+        id: fwkey
+        run: |
+          key=$(aws ssm get-parameter --name "${SSM_PROD_KEY_PARAM}" --with-decryption --query 'Parameter.Value' --output text)
+          echo "::add-mask::$key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+        env:
+          SSM_PROD_KEY_PARAM: /prod/flywheel/nacc-admin/apikey
+
+      - name: Log in to production Flywheel
+        run: FW_CLI_API_KEY="${{ steps.fwkey.outputs.key }}" flyw auth login
+
+      # Promote to production by installing the gear from ECR — same mechanism
+      # as sandbox, referencing the identical ECR image. No rebuild.
+      # (Validation of the install-from-ECR flow is noted on the sandbox job.)
+      - name: Install gear to production from ECR
+        run: flyw gear install --yes -n qsm-medi -v "${{ needs.deploy-sandbox.outputs.version }}"
