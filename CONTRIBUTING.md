@@ -65,15 +65,28 @@ a `deploy-*.yml` would still carry fork-only deployment config upstream. Before
 opening an upstream PR, review the file list and confirm it contains no
 deploy/infra files.
 
+## Branch protection
+
+`main` is protected: all changes land through a pull request (no direct pushes),
+a review is required, and the `test` check must pass. Admins can override in a
+pinch, but the default path — including syncing from upstream — is always a PR.
+Do not push directly to `main` even when you can.
+
 ## Keeping in sync
 
-Pull upstream changes down regularly so the fork does not drift:
+Pull upstream changes down regularly so the fork does not drift. Because `main`
+is protected, do this on a branch and open a PR — never push the sync straight
+to `main`:
 
 ```sh
 git fetch upstream
-git checkout main
-git merge --ff-only upstream/main   # fast-forward when possible
-git push origin main
+git checkout -b sync-upstream main
+git merge upstream/main          # a real merge; upstream usually diverges, so
+                                 # --ff-only will not apply once the fork has
+                                 # its own commits
+# reconcile deploy-only manifest fields (see below), then:
+git push origin sync-upstream
+gh pr create --base main --head sync-upstream   # PR into the fork
 ```
 
 To contribute code upstream, open a PR from a fork branch to `rt-ward`, scoped
