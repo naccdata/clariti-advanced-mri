@@ -109,6 +109,47 @@ jobs:
           [ "$target" = "$rootfs_tag" ] || { echo "::error::exchange.rootfs-url tag ($rootfs_tag) != target ($target)"; fail=1; }
           [ "$fail" = "0" ] || exit 1
 
+      # Sanity check: the fork owns a few manifest fields that upstream does NOT
+      # carry (upstream leaves exchange:null, a non-ECR builder image, and no
+      # private flag). An upstream pull can silently revert these, so validate
+      # them here BEFORE any build — catching the exact drift the CONTRIBUTING
+      # reconcile step guards against.
+      - name: Sanity-check fork deploy fields in manifest
+        working-directory: qsm-medi
+        env:
+          EXPECTED_ECR_HOST: 380366436539.dkr.ecr.us-west-2.amazonaws.com
+          EXPECTED_ECR_REPO: clariti/qsm-medi
+        run: |
+          target="${{ steps.version.outputs.version }}"
+          builder_img=$(jq -r '.custom["gear-builder"].image' manifest.json)
+          rootfs_url=$(jq -r '.exchange["rootfs-url"] // ""' manifest.json)
+          private=$(jq -r '.custom.flywheel.private' manifest.json)
+
+          echo "gear-builder.image:   $builder_img"
+          echo "exchange.rootfs-url:  $rootfs_url"
+          echo "custom.flywheel.private: $private"
+
+          fail=0
+          # Version must be a clean release semver (MAJOR.MINOR.PATCH, digits
+          # only) — the fork deploys release tags, not pre-releases or build
+          # metadata. This rejects e.g. 2.5.1-beta, 2.5.1-rc1, 2.5.1+build,
+          # v2.5.1, or 2.5 that an upstream pull or a bad tag could introduce.
+          if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::deploy version ($target) is not a clean release semver (expected MAJOR.MINOR.PATCH); the fork deploys release tags only"
+            fail=1
+          fi
+          # Builder image must be the fork's ECR repo, not upstream's registry.
+          [ "$builder_img" = "${EXPECTED_ECR_REPO}:${target}" ] \
+            || { echo "::error::gear-builder.image ($builder_img) != ${EXPECTED_ECR_REPO}:${target} (did an upstream pull revert it?)"; fail=1; }
+          # rootfs-url must point at the fork's ECR (upstream leaves this null).
+          [ "$rootfs_url" = "${EXPECTED_ECR_HOST}/${EXPECTED_ECR_REPO}:${target}" ] \
+            || { echo "::error::exchange.rootfs-url ($rootfs_url) != ${EXPECTED_ECR_HOST}/${EXPECTED_ECR_REPO}:${target} (upstream leaves exchange:null; restore the fork value)"; fail=1; }
+          # Private gear flag must be set for the ECR-hosted install path.
+          [ "$private" = "true" ] \
+            || { echo "::error::custom.flywheel.private ($private) must be true for the fork's ECR-hosted deploy"; fail=1; }
+          [ "$fail" = "0" ] || exit 1
+          echo "Manifest fork deploy fields OK."
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
