@@ -15,6 +15,18 @@ Center. For any questions, please email Dr. Evia (Arnold_Evia@rush.edu).
 - MEDI reconstruction, doi: 10.1016/j.neuroimage.2011.08.082
 
 ## Release Notes
+
+> **Versioning note:** This deployment fork tags Flywheel releases with clean
+> semver (e.g. `2.5.1`). Upstream (`rt-ward/Advanced-MRI`) uses a pre-release
+> suffix (e.g. `2.5.1-beta`) so its builds don't clobber these release tags in
+> the shared sandbox exchange. When syncing from upstream, strip the suffix and
+> restore the fork's deploy fields (see CONTRIBUTING.md).
+
+- 2.5.1 (09/10/26)
+
+        - Refactored the gear wrapper and container build
+        - Removed the superseded neurodocker build script (create_docker.sh)
+
 - 2.5.0 (07/01/26)
 
         - Updated software
@@ -281,6 +293,14 @@ platform. For local development and testing:
 - Flywheel CLI (`flyw`) for local gear testing and deployment
 
 ### Building the Container
+
+The image is based on the MathWorks prebuilt MATLAB Runtime R2023b image
+(`containers.mathworks.com/matlab-runtime`, pinned by digest), which ships the
+MCR pre-installed at `/opt/matlabruntime/R2023b`. This avoids downloading and
+installing the ~4.6 GB runtime on every build. The base image pulls anonymously,
+so no MathWorks account is needed. The MCR release is fixed by the compiled
+`pipeline_qsm` binary (R2023b); changing it requires recompiling the binary
+under the matching MATLAB.
 
 Build directly from the Dockerfile. The image must be built for `linux/amd64`
 (the MATLAB Runtime ships x86_64 binaries only). On an arm64 host such as Apple
