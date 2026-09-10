@@ -1,5 +1,6 @@
 ARG TARGETARCH
-FROM --platform=linux/amd64 ubuntu:22.04
+# Base image pinned by digest for reproducibility (ubuntu:22.04 as of review).
+FROM --platform=linux/amd64 ubuntu:22.04@sha256:281c5745f657873d78e5531fc5ba8575f46ab7769b94550ac99543f122679986
 
 # Set environment variables
 ENV DEBIAN_FRONTEND="noninteractive" \
@@ -70,7 +71,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netbase \
     python3 \
     python3-pip \
-    sudo \
     unzip \
     wget \
     zip && \
@@ -108,11 +108,17 @@ RUN pip3 install scipy && \
 
 # Force-reinstall NumPy 1.x only (no deps, so it won’t pull 2.x back in)
 RUN pip3 install --force-reinstall --no-deps "numpy<2.0.0"
-# Copy files and set permissions
+# Create a non-root user to run the gear
+RUN groupadd -r flywheel && useradd -r -g flywheel -d ${FLYWHEEL} -s /bin/bash flywheel
+
+# Copy files and give the non-root user ownership of the gear tree
 COPY ./input/ ${FLYWHEEL}/input/
 COPY ./workflows/ ${FLYWHEEL}/workflows/
 COPY ./pipeline_singlePLD.sh ${FLYWHEEL}/
-RUN chmod -R 777 ${FLYWHEEL}
+RUN chmod -R u+rwX ${FLYWHEEL} && chown -R flywheel:flywheel ${FLYWHEEL}
+
+# Run as the non-root user
+USER flywheel
 
 # Set entrypoint
 ENTRYPOINT ["/bin/bash", "/flywheel/v0/pipeline_singlePLD.sh"]
