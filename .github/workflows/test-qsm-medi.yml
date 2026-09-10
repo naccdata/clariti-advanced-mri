@@ -1,8 +1,9 @@
 name: Test QSM-MEDI gear
 
 # Runs unit tests and lint for the qsm-medi gear wrapper.
-# Does not build the Docker image (the MCR download makes that expensive; image
-# build/publish belongs with the deploy workflow, once that exists).
+# Does not build the Docker image: the image is large (~16 GB, dominated by the
+# MATLAB Runtime base layer). Image build/publish belongs with the deploy
+# workflow, once that exists.
 on:
   workflow_dispatch:
   pull_request:

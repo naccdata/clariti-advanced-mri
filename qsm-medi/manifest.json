@@ -2,7 +2,7 @@
   "name": "qsm-medi",
   "label": "Quantitative Susceptibility Mapping (QSM) using Morphology Enabled Dipole Inversion (MEDI)",
   "description": "Quantitative Susceptibility Mapping (QSM) using the Morphology Enabled Dipole Inversion (MEDI) with maximum spherical mean value filtering (mSMV).",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "author": "Arnold Evia, <arnold_evia@rush.edu>",
   "maintainer": "NACC <naccdata@uw.edu>",
   "cite": "doi: 10.1016/j.neuroimage.2011.08.082, doi: 10.1111/jon.12923, doi: 10.1002/mrm.25137, doi: 10.1002/nbm.1670, doi: 10.1002/mrm.28563, doi: 10.1002/mrm.24272, doi: 10.1002/mrm.29963, doi: 10.1002/hbm.24750",
@@ -10,24 +10,28 @@
   "source": "https://github.com/naccdata/clariti-advanced-mri/tree/main/qsm-medi",
   "license": "BSD-3-Clause",
   "environment": {
+    "AGREE_TO_MATLAB_RUNTIME_LICENSE": "yes",
     "LANG": "en_US.UTF-8",
     "LC_ALL": "en_US.UTF-8",
-    "LD_LIBRARY_PATH": "/usr/lib/x86_64-linux-gnu:/opt/MCR-2023b/v915/runtime/glnxa64:/opt/MCR-2023b/v915/bin/glnxa64:/opt/MCR-2023b/v915/sys/os/glnxa64:/opt/MCR-2023b/v915/extern/bin/glnxa64",
-    "MATLABCMD": "/opt/MCR-2023b/2023b/toolbox/matlab",
-    "MCRROOT": "/opt/MCR-2023b/2023b",
+    "LD_LIBRARY_PATH": "/opt/matlabruntime/R2023b/runtime/glnxa64:/opt/matlabruntime/R2023b/bin/glnxa64:/opt/matlabruntime/R2023b/sys/os/glnxa64:/opt/matlabruntime/R2023b/sys/opengl/lib/glnxa64:/opt/matlabruntime/R2023b/extern/bin/glnxa64",
+    "MCRROOT": "/opt/matlabruntime/R2023b",
     "PATH": "/opt/dcm2niix/bin:/opt/process_QSM/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "PWD": "/opt/process_QSM",
     "UV_CACHE_DIR": "/opt/uv/cache",
-    "XAPPLRESDIR": "/opt/MCR-2023b/v915/x11/app-defaults"
+    "XAPPLRESDIR": "/opt/matlabruntime/R2023b/x11/app-defaults"
   },
   "custom": {
     "gear-builder": {
       "category": "analysis",
-      "image": "aevia.azurecr.io/qsm-medi:2.5.0"
+      "image": "clariti/qsm-medi:2.5.1"
     },
     "flywheel": {
-      "suite": "QSM-MEDI"
+      "suite": "QSM-MEDI",
+      "private": true
     }
+  },
+  "exchange": {
+    "rootfs-url": "380366436539.dkr.ecr.us-west-2.amazonaws.com/clariti/qsm-medi:2.5.1"
   },
   "config": {
     "load_negate_every_other_axis": {
