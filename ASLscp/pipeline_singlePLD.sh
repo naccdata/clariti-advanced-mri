@@ -832,7 +832,12 @@ calculate_weighted_rcbf() {
 
     # White Matter
     if [[ -n "$white_matter_weighted" && "$white_matter_weighted" =~ ^[0-9.]+$ ]]; then
-        white_matter_vox=$(echo "$white_right_vox + $white_right_vox" | bc -l)
+        # NACCDATA REVIEW: was "$white_right_vox + $white_right_vox" (right counted
+        # twice, left dropped) for a row labeled "L+R". Changed to left + right to
+        # match white_matter_weighted (line ~796) and every other L+R row.
+        # AUTHOR CONFIRMATION NEEDED: confirm this was an unintended copy-paste and
+        # left+right is the intended white-matter voxel total.
+        white_matter_vox=$(echo "$white_left_vox + $white_right_vox" | bc -l)
         echo "White_Matter L+R | $white_matter_weighted | $white_matter_vox" >> "$weighted_rcbf"
     else
         log "White_Matter_L+R value is not a number"
