@@ -22,6 +22,11 @@ Center. For any questions, please email Dr. Evia (Arnold_Evia@rush.edu).
 > the shared sandbox exchange. When syncing from upstream, strip the suffix and
 > restore the fork's deploy fields (see CONTRIBUTING.md).
 
+- 2.5.2 (09/11/26)
+
+        - Removed the invalid `exchange` block from manifest.json (the gear
+          manifest schema does not allow it; it is set by the publish tooling)
+
 - 2.5.1 (09/10/26)
 
         - Refactored the gear wrapper and container build

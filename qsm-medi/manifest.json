@@ -2,7 +2,7 @@
   "name": "qsm-medi",
   "label": "Quantitative Susceptibility Mapping (QSM) using Morphology Enabled Dipole Inversion (MEDI)",
   "description": "Quantitative Susceptibility Mapping (QSM) using the Morphology Enabled Dipole Inversion (MEDI) with maximum spherical mean value filtering (mSMV).",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "author": "Arnold Evia, <arnold_evia@rush.edu>",
   "maintainer": "NACC <naccdata@uw.edu>",
   "cite": "doi: 10.1016/j.neuroimage.2011.08.082, doi: 10.1111/jon.12923, doi: 10.1002/mrm.25137, doi: 10.1002/nbm.1670, doi: 10.1002/mrm.28563, doi: 10.1002/mrm.24272, doi: 10.1002/mrm.29963, doi: 10.1002/hbm.24750",
@@ -23,15 +23,12 @@
   "custom": {
     "gear-builder": {
       "category": "analysis",
-      "image": "clariti/qsm-medi:2.5.1"
+      "image": "clariti/qsm-medi:2.5.2"
     },
     "flywheel": {
       "suite": "QSM-MEDI",
       "private": true
     }
-  },
-  "exchange": {
-    "rootfs-url": "380366436539.dkr.ecr.us-west-2.amazonaws.com/clariti/qsm-medi:2.5.1"
   },
   "config": {
     "load_negate_every_other_axis": {
