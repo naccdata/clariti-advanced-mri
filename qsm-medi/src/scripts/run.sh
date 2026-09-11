@@ -8,7 +8,7 @@ export INPUT_FOLDER="/input"
 export OUTPUT_FOLDER="/output"
 
 export PATH_PARAMETERS_JSON="${INPUT_FOLDER}/parameters/qsm_parameters.json"
-export PIPELINE_VERSION="2.5.1"
+export PIPELINE_VERSION="2.5.2"
 custom_parameters_json_set=0
 input_dicom_exists=0
 input_nifti_exists=0
