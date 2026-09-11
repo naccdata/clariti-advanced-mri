@@ -15,14 +15,16 @@ name: Deploy QSM-MEDI gear
 # that touch qsm-medi/** do NOT trigger a deploy (that is the test workflow's
 # job) — only an explicit tag or dispatch does.
 #
-# Promotion model (build once, install from ECR to each exchange):
-#   - deploy-sandbox builds the image once, pushes it to ECR
-#     (clariti/qsm-medi), and installs the gear to the sandbox exchange from
-#     ECR. The pushed digest is recorded for traceability.
-#   - deploy-production waits for a required reviewer, then installs the same
-#     gear (same ECR image) to the production exchange from ECR. No rebuild.
-# Both instances use `gear install` from ECR — `gear upload` is not used, so
-# there is no build in either FW step and no per-instance image divergence.
+# Promotion model (build once in ECR, publish the same artifact to each instance):
+#   - deploy-sandbox builds the image once and pushes it to ECR
+#     (clariti/qsm-medi) — the build/promotion artifact store. It then pulls that
+#     image back, tags it to custom.gear-builder.image, and publishes it to the
+#     sandbox instance with `flyw gear upload`. The pushed digest is recorded.
+#   - deploy-production waits for a required reviewer, then re-pulls the same ECR
+#     image and publishes it to the production instance the same way. No rebuild.
+# `gear upload` (not `gear install`) is the publish verb: it tags the local image
+# and pushes it into the target instance's own registry, then registers the gear.
+# ECR is the promotion vehicle; each instance ends up hosting its own copy.
 on:
   push:
     tags:
@@ -109,24 +111,25 @@ jobs:
           [ "$target" = "$rootfs_tag" ] || { echo "::error::exchange.rootfs-url tag ($rootfs_tag) != target ($target)"; fail=1; }
           [ "$fail" = "0" ] || exit 1
 
-      # Sanity check: the fork owns a few manifest fields that upstream does NOT
-      # carry (upstream leaves exchange:null, a non-ECR builder image, and no
-      # private flag). An upstream pull can silently revert these, so validate
-      # them here BEFORE any build — catching the exact drift the CONTRIBUTING
-      # reconcile step guards against.
+      # Sanity check: the fork owns a couple of manifest fields that upstream
+      # does not carry the same way (upstream ships a non-ECR builder image and
+      # no private flag). An upstream pull can silently revert these, so validate
+      # them here BEFORE any build — catching the drift the CONTRIBUTING reconcile
+      # step guards against.
+      #
+      # Note: we do NOT check exchange.rootfs-url. `flyw gear upload` overwrites
+      # exchange (to docker://<site>/qsm-medi:<v>) at publish time, so any value
+      # in the manifest is ignored — asserting it here would be theater.
       - name: Sanity-check fork deploy fields in manifest
         working-directory: qsm-medi
         env:
-          EXPECTED_ECR_HOST: 380366436539.dkr.ecr.us-west-2.amazonaws.com
           EXPECTED_ECR_REPO: clariti/qsm-medi
         run: |
           target="${{ steps.version.outputs.version }}"
           builder_img=$(jq -r '.custom["gear-builder"].image' manifest.json)
-          rootfs_url=$(jq -r '.exchange["rootfs-url"] // ""' manifest.json)
           private=$(jq -r '.custom.flywheel.private' manifest.json)
 
-          echo "gear-builder.image:   $builder_img"
-          echo "exchange.rootfs-url:  $rootfs_url"
+          echo "gear-builder.image:      $builder_img"
           echo "custom.flywheel.private: $private"
 
           fail=0
@@ -138,15 +141,15 @@ jobs:
             echo "::error::deploy version ($target) is not a clean release semver (expected MAJOR.MINOR.PATCH); the fork deploys release tags only"
             fail=1
           fi
-          # Builder image must be the fork's ECR repo, not upstream's registry.
+          # Builder image must be clariti/qsm-medi:<version> — this is the local
+          # tag `gear upload` resolves and pushes (we pull the ECR image and tag
+          # it to exactly this). Upstream uses aevia.azurecr.io, so a stale value
+          # here means an upstream pull was not reconciled.
           [ "$builder_img" = "${EXPECTED_ECR_REPO}:${target}" ] \
             || { echo "::error::gear-builder.image ($builder_img) != ${EXPECTED_ECR_REPO}:${target} (did an upstream pull revert it?)"; fail=1; }
-          # rootfs-url must point at the fork's ECR (upstream leaves this null).
-          [ "$rootfs_url" = "${EXPECTED_ECR_HOST}/${EXPECTED_ECR_REPO}:${target}" ] \
-            || { echo "::error::exchange.rootfs-url ($rootfs_url) != ${EXPECTED_ECR_HOST}/${EXPECTED_ECR_REPO}:${target} (upstream leaves exchange:null; restore the fork value)"; fail=1; }
-          # Private gear flag must be set for the ECR-hosted install path.
+          # Private gear flag — fork-owned policy; upstream does not set it.
           [ "$private" = "true" ] \
-            || { echo "::error::custom.flywheel.private ($private) must be true for the fork's ECR-hosted deploy"; fail=1; }
+            || { echo "::error::custom.flywheel.private ($private) must be true for the fork's deploy"; fail=1; }
           [ "$fail" = "0" ] || exit 1
           echo "Manifest fork deploy fields OK."
 
@@ -169,8 +172,9 @@ jobs:
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Build once, push to ECR. Digest recorded for traceability; both
-      # instances install this same image from ECR by name/version.
+      # Build once, push to ECR (the build/promotion artifact store). Digest
+      # recorded for traceability. Both instances re-pull this same image from
+      # ECR and publish it with `flyw gear upload`; neither rebuilds.
       - name: Build and push image (linux/amd64)
         id: build
         working-directory: qsm-medi
@@ -186,10 +190,14 @@ jobs:
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "Pushed ${ECR_REPOSITORY}@${digest}"
 
-      # Install to the sandbox exchange from ECR — same mechanism as production,
-      # so both instances reference the identical ECR image and neither rebuilds.
-      # Using `gear install` (not `gear upload`) throughout avoids any question
-      # of whether the ECR/private manifest keys interfere with upload.
+      # Publish to the sandbox instance with `flyw gear upload`. The CLI tags a
+      # LOCAL image (custom.gear-builder.image) and pushes it into the Flywheel
+      # instance's own registry, then registers via prepare-add + save. So we
+      # first pull the just-built image from ECR and tag it to match
+      # custom.gear-builder.image, then run upload. (`gear install` was wrong: it
+      # looks up gears in Flywheel's public exchange, not our instance or ECR.)
+      # ECR remains the build/promotion artifact store; production re-pulls the
+      # same ECR image and publishes it identically.
       - name: Install Flywheel CLI
         run: |
           export FW_CLI_INSTALL_DIR="$HOME/.local/bin"
@@ -213,19 +221,28 @@ jobs:
       - name: Log in to sandbox Flywheel
         run: FW_CLI_API_KEY="${{ steps.fwkey.outputs.key }}" flyw auth login
 
-      # Install to sandbox exchange from ECR. The gear's manifest (baked into the
-      # ECR image) must carry exchange.rootfs-url + custom.flywheel.private=true
-      # so install pulls from ECR.
-      # TODO(flywheel): VALIDATE against sandbox that `gear install -n/-v`
-      # registers the ECR-hosted gear onto this instance's exchange (the CLI help
-      # does not make clear whether install can publish-from-ECR or only installs
-      # a gear already on the exchange).
-      - name: Install gear to sandbox from ECR
-        run: flyw gear install --yes -n qsm-medi -v "${{ steps.version.outputs.version }}"
+      # Pull the built image from ECR and tag it to match custom.gear-builder.image
+      # so `flyw gear upload` finds it locally. The build step pushed with buildx
+      # --push (no local load), so an explicit pull is required even in sandbox;
+      # this also keeps sandbox and production symmetric.
+      - name: Fetch image from ECR for upload
+        run: |
+          ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ steps.version.outputs.version }}"
+          local_image="clariti/qsm-medi:${{ steps.version.outputs.version }}"  # == custom.gear-builder.image
+          docker pull "$ecr_image"
+          docker tag "$ecr_image" "$local_image"
+
+      # Publish to the sandbox instance. gear upload reads qsm-medi/manifest.json,
+      # tags custom.gear-builder.image as <site>/qsm-medi:<v>, pushes it into the
+      # sandbox instance registry, and registers the gear.
+      - name: Upload gear to sandbox
+        working-directory: qsm-medi
+        run: FW_CLI_API_KEY="${{ steps.fwkey.outputs.key }}" flyw gear upload .
 
   # ---------------------------------------------------------------------------
   # Production: gated behind a required reviewer on the production environment.
-  # Installs the same ECR image to the production exchange. Never rebuilds.
+  # Re-pulls the same ECR image built in sandbox and publishes it to the
+  # production instance with `flyw gear upload`. Never rebuilds.
   # ---------------------------------------------------------------------------
   deploy-production:
     needs: deploy-sandbox
@@ -267,8 +284,18 @@ jobs:
       - name: Log in to production Flywheel
         run: FW_CLI_API_KEY="${{ steps.fwkey.outputs.key }}" flyw auth login
 
-      # Promote to production by installing the gear from ECR — same mechanism
-      # as sandbox, referencing the identical ECR image. No rebuild.
-      # (Validation of the install-from-ECR flow is noted on the sandbox job.)
-      - name: Install gear to production from ECR
-        run: flyw gear install --yes -n qsm-medi -v "${{ needs.deploy-sandbox.outputs.version }}"
+      # Pull the same image sandbox built (by the deploy-sandbox version output)
+      # and tag it to match custom.gear-builder.image. Pull-only ECR role — no
+      # rebuild, no ECR write; the push goes into the production instance registry.
+      - name: Fetch image from ECR for upload
+        run: |
+          version="${{ needs.deploy-sandbox.outputs.version }}"
+          ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${version}"
+          local_image="clariti/qsm-medi:${version}"  # == custom.gear-builder.image
+          docker pull "$ecr_image"
+          docker tag "$ecr_image" "$local_image"
+
+      # Publish the same artifact to the production instance.
+      - name: Upload gear to production
+        working-directory: qsm-medi
+        run: FW_CLI_API_KEY="${{ steps.fwkey.outputs.key }}" flyw gear upload .
