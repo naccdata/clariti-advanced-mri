@@ -1,18 +1,56 @@
 name: Test QSM-MEDI gear
 
 # Runs unit tests and lint for the qsm-medi gear wrapper.
-# Does not build the Docker image: the image is large (~16 GB, dominated by the
-# MATLAB Runtime base layer). Image build/publish belongs with the deploy
-# workflow, once that exists.
+# Does not build the Docker image (the MCR download makes that expensive; image
+# build/publish belongs with the deploy workflow, once that exists).
+#
+# Branch protection requires the `gate` job (not `test`). The workflow runs on
+# EVERY pull request so `gate` always reports a status; the expensive `test` job
+# only runs when qsm-medi/** (or this workflow) actually changes. `gate` passes
+# when `test` succeeded OR was skipped, and fails only when `test` ran and
+# failed. This avoids the "Waiting for status to be reported" deadlock that
+# happens when a required check is behind a paths filter and a PR touches other
+# files (e.g. the deploy workflow).
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - 'qsm-medi/**'
-      - '.github/workflows/test-qsm-medi.yml'
 
 jobs:
+  # Detect whether this PR touches files the test job cares about. Dependency-
+  # free: diff the PR range against the base branch.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # workflow_dispatch has no PR context: treat as relevant so tests run.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "No PR context (dispatch); running tests."
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$changed"
+          if echo "$changed" | grep -Eq '^(qsm-medi/|\.github/workflows/test-qsm-medi\.yml$)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,3 +65,26 @@ jobs:
       - name: Lint
         working-directory: qsm-medi
         run: uv run --no-project --with ruff ruff check src/flywheel/ src/scripts/
+
+  # Required status check for branch protection. Always runs, so it always
+  # reports. Passes when `test` succeeded or was skipped (nothing relevant
+  # changed); fails only when `test` actually failed.
+  gate:
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test result
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          echo "test job result: ${TEST_RESULT}"
+          case "$TEST_RESULT" in
+            success|skipped)
+              echo "Gate passed (test ${TEST_RESULT})."
+              ;;
+            *)
+              echo "::error::Gate failed: test job result was '${TEST_RESULT}'."
+              exit 1
+              ;;
+          esac
