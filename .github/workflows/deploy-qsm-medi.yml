@@ -180,6 +180,13 @@ jobs:
       # legitimate case (e.g. retrying the publish step after a fix). So if the
       # version tag already exists in ECR, reuse it: skip the build/push and
       # record the existing digest. Only build when the tag is absent.
+      #
+      # Existence is checked with `batch-get-image` (the push role grants
+      # ecr:BatchGetImage; it does NOT grant ecr:DescribeImages). batch-get-image
+      # does not error on a missing tag — it returns the miss in failures[] and
+      # exits 0 — so a MISSING image and a genuine API/auth FAILURE are
+      # distinguishable: we check the command exit status separately and fail
+      # loudly on error rather than silently building into the immutable-tag wall.
       - name: Build and push image (linux/amd64)
         id: build
         working-directory: qsm-medi
@@ -187,12 +194,17 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${version}"
 
-          existing_digest=$(aws ecr describe-images \
-            --repository-name "${ECR_REPOSITORY}" \
-            --region "${AWS_REGION}" \
-            --image-ids imageTag="${version}" \
-            --query 'imageDetails[0].imageDigest' \
-            --output text 2>/dev/null || true)
+          # Capture output and exit status separately. A non-zero exit is a real
+          # failure (auth/network) — do NOT treat it as "image absent".
+          if ! existing_digest=$(aws ecr batch-get-image \
+                --repository-name "${ECR_REPOSITORY}" \
+                --region "${AWS_REGION}" \
+                --image-ids imageTag="${version}" \
+                --query 'images[0].imageId.imageDigest' \
+                --output text); then
+            echo "::error::Failed to query ECR for ${ECR_REPOSITORY}:${version} (auth/network?). Not building blindly."
+            exit 1
+          fi
 
           if [ -n "$existing_digest" ] && [ "$existing_digest" != "None" ]; then
             echo "Image ${ECR_REPOSITORY}:${version} already exists (immutable tag); reusing it."
