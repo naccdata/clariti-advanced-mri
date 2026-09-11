@@ -89,26 +89,24 @@ jobs:
           manifest=$(jq -r '.version' manifest.json)
           pyproject=$(grep -oP '^version = "\K[^"]+' pyproject.toml)
           runsh=$(grep -oP 'PIPELINE_VERSION="\K[^"]+' src/scripts/run.sh)
-          # The manifest also embeds the version in the image tag and the ECR
-          # rootfs-url; a stale tag there would point install at the wrong image.
+          # The manifest also embeds the version in the gear-builder image tag;
+          # a stale tag there would resolve the wrong local image at upload.
+          # (No exchange.rootfs-url check: the manifest carries no exchange block
+          # — the schema disallows it — and gear upload sets exchange itself.)
           builder_img=$(jq -r '.custom["gear-builder"].image' manifest.json)   # clariti/qsm-medi:<v>
-          rootfs_url=$(jq -r '.exchange["rootfs-url"]' manifest.json)          # <ecr>/clariti/qsm-medi:<v>
           builder_tag="${builder_img##*:}"
-          rootfs_tag="${rootfs_url##*:}"
 
           echo "target (tag/input):        $target"
           echo "manifest.json version:     $manifest"
           echo "pyproject.toml:            $pyproject"
           echo "run.sh:                    $runsh"
           echo "gear-builder.image tag:    $builder_tag"
-          echo "exchange.rootfs-url tag:   $rootfs_tag"
 
           fail=0
           [ "$target" = "$manifest" ] || { echo "::error::manifest.json version ($manifest) != target ($target)"; fail=1; }
           [ "$target" = "$pyproject" ] || { echo "::error::pyproject.toml ($pyproject) != target ($target)"; fail=1; }
           [ "$target" = "$runsh" ] || { echo "::error::run.sh ($runsh) != target ($target)"; fail=1; }
           [ "$target" = "$builder_tag" ] || { echo "::error::gear-builder.image tag ($builder_tag) != target ($target)"; fail=1; }
-          [ "$target" = "$rootfs_tag" ] || { echo "::error::exchange.rootfs-url tag ($rootfs_tag) != target ($target)"; fail=1; }
           [ "$fail" = "0" ] || exit 1
 
       # Sanity check: the fork owns a couple of manifest fields that upstream
