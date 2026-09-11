@@ -104,25 +104,34 @@ upstream pull, verify the fork's manifest still has its deploy values.
 
 Fork-owned manifest fields to confirm after a pull (per gear):
 
-- `version` — the clean semver release (e.g. `2.5.1`). Upstream carries a
-  pre-release suffix (e.g. `2.5.1-beta`); strip it to the clean release here.
+- `version` — the clean semver release (e.g. `2.5.2`). Upstream carries a
+  pre-release suffix (e.g. `2.5.2-beta`); strip it to the clean release here.
 - `custom.gear-builder.image` — the fork's ECR image
   (`clariti/<gear>:<version>`). Upstream uses a different registry.
-- `exchange.rootfs-url` — the fork's ECR URL
-  (`<account>.dkr.ecr.us-west-2.amazonaws.com/clariti/<gear>:<version>`).
-  Upstream has `exchange: null`.
 - `custom.flywheel.private` — `true` on the fork. Absent upstream.
 
-Quick check after a pull (adjust the expected image/URL per gear):
+There must be **no `exchange` block** in `manifest.json`. The gear manifest
+schema does not allow it (`flyw gear upload` rejects it), and the publish
+tooling sets `exchange` itself at upload time. Earlier fork revisions carried an
+`exchange.rootfs-url` pointing at ECR — that was a mistake and has been removed.
+If an upstream pull reintroduces an `exchange` key (upstream historically
+carried `exchange: null`), delete it during reconcile.
+
+Quick check after a pull (adjust the expected image per gear):
 
 ```sh
 jq '{version, image: .custom["gear-builder"].image,
-     private: .custom.flywheel.private, exchange}' qsm-medi/manifest.json
+     private: .custom.flywheel.private,
+     exchange: (has("exchange"))}' qsm-medi/manifest.json
+# expect: version = clean semver, image = clariti/<gear>:<version>,
+#         private = true, exchange = false (key absent)
 ```
 
-If any field reverted to an upstream value, restore the fork's value before
-tagging a release — the deploy workflow's version-consistency gate will also
-catch a mismatched tag, but the ECR URL and `private` flag are not gated.
+If any field reverted to an upstream value, or an `exchange` key reappeared,
+fix it before tagging a release. The deploy workflow's version-consistency and
+manifest sanity-check steps catch the version and `gear-builder.image` tag, but
+`private` is not gated — and an `exchange` block would fail the deploy later at
+`flyw gear upload` (manifest validation), so strip it here.
 
 ## Deployment
 
