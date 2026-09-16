@@ -883,9 +883,6 @@ calculate_weighted_rcbf() {
 
     cat "$weighted_rcbf"
 
-    # Calculate reference CBF values
-    wholebrain_cbf=$(sed -n 's/[^0-9]*\([0-9]\+\).*/\1/p; q' "${stats_dir}/cbf_wholebrain.txt")
-
     # Add ratio columns to extracted file
     local temp_file="${stats_dir}/temp_ratio_calc.txt"
     awk -F '|' -v put_cbf="$putamen_weighted" '
