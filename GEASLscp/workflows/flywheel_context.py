@@ -8,10 +8,10 @@ obtain the SDK client and the destination container, then walks the
 subject/session/project hierarchy to record run metadata as metadata.json.
 """
 
-import os
+import argparse
 import json
 import logging
-import argparse
+import os
 from datetime import datetime
 
 import flywheel

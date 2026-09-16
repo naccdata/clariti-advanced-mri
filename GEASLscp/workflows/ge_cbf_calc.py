@@ -1,9 +1,9 @@
-import os
-import numpy as np
-import nibabel as nib
-import subprocess
+"""Compute CBF from GE ASL and M0 images using the pcASL kinetic model."""
 import argparse
-import sys
+import os
+
+import nibabel as nib
+import numpy as np
 
 parser = argparse.ArgumentParser(description='Create CBF map from protocol parameters.')
 

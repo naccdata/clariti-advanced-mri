@@ -1,10 +1,9 @@
-import os
-import numpy as np
-import nibabel as nib
-import matplotlib.pyplot as plt
-import scipy 
+"""Fit a quantitative T1 map from inversion-recovery M0 data."""
 import argparse
-import sys
+
+import nibabel as nib
+import numpy as np
+import scipy
 
 parser = argparse.ArgumentParser(description='get dcm parameters from the pipeline script')
 
