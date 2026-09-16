@@ -96,18 +96,18 @@ RUN curl -fsSL https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinst
     python3 - -d /opt/fsl-6.0.7.1 -V 6.0.7.1 && \
     rm -rf /opt/fsl-6.0.7.1/doc /opt/fsl-6.0.7.1/data
 
-RUN pip3 install scipy && \
-    pip3 install nibabel && \
-    pip3 install matplotlib && \
-    pip3 install transforms3d && \
-    pip3 install "fw-gear[sdk]~=0.3.0" && \
-    pip3 install aspose-words && \
-    pip3 install reportlab && \
-    pip3 install nilearn && \
-    rm -rf /root/.cache/pip
-
-# Force-reinstall NumPy 1.x only (no deps, so it won’t pull 2.x back in)
-RUN pip3 install --force-reinstall --no-deps "numpy<2.0.0"
+# Python dependencies, pinned to the versions validated in this image.
+# numpy is pinned <2 (the pipeline requires the 1.x ABI); pinning every
+# package means nothing pulls numpy 2.x back in, so no force-reinstall is
+# needed.
+RUN pip3 install --no-cache-dir \
+    "numpy==1.26.4" \
+    "scipy==1.15.3" \
+    "nibabel==5.4.2" \
+    "matplotlib==3.10.9" \
+    "fw-gear[sdk]==0.3.7" \
+    "reportlab==5.0.1" \
+    "nilearn==0.14.1"
 # Create a non-root user to run the gear
 RUN groupadd -r flywheel && useradd -r -g flywheel -d ${FLYWHEEL} -s /bin/bash flywheel
 
