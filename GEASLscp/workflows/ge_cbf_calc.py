@@ -27,10 +27,6 @@ namemask = args.m
 mask_data = nib.load(namemask).get_fdata().astype(np.float64)
 ####
 
-print(args.ld)
-print(args.pld)
-print("LD and PLD as input to the cbf calc script.")
-
 m0 = ref_data * args.scale
 a = 0.6375
 lmbda = 0.9
@@ -48,7 +44,6 @@ cbf = cbf * mask_data
 modified_img = nib.Nifti1Image(cbf, nib.load(nameasl).affine, nib.load(nameasl).header)
 
 out_dir = args.out
-print(out_dir)
 nameout = os.path.join(out_dir, 'cbf.nii.gz')
 nib.save(modified_img, nameout)
 
