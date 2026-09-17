@@ -220,3 +220,7 @@ __marimo__/
 !*.conf.example
 
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aslscp"
+name = "geaslscp"
 version = "0.2.4"
-description = "ASL self-contained processing pipeline for Flywheel"
+description = "GE ASL self-contained processing pipeline for Flywheel"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
