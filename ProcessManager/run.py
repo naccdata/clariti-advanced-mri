@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Pipeline Manager Tool.
+
+Scans a Flywheel project and launches the QSMxT and QSM-MEDI gears on
+acquisitions that contain QSM input files.
+"""
+
+import datetime
+import logging
+import sys
+from dataclasses import dataclass, field
+
+import flywheel
+from fw_client import FWClient
+
+###############################################################################
+# Logging Setup
+###############################################################################
+
+logger = logging.getLogger("fw_uploader")
+logger.setLevel(logging.INFO)
+
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logger.addHandler(_handler)
+
+###############################################################################
+# Flywheel Connector
+###############################################################################
+
+
+class FlywheelConnector:
+    """Holds the REST and SDK clients plus the project being processed."""
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.project = None
+        self.rest_client = FWClient(api_key=api_key)
+        self.sdk_client = flywheel.Client(api_key)
+
+    def set_project_by_id(self, project_id: str) -> None:
+        try:
+            self.project = self.sdk_client.get_project(project_id)
+        except Exception:
+            logger.exception("Cannot fetch project '%s' via SDK", project_id)
+            raise
+        logger.info("Project set: %s", self.project.label)
+
+
+###############################################################################
+# Analysis Results
+###############################################################################
+
+AcqKey = tuple  # (subject label, session label, acquisition label)
+
+
+class AnalysisResults:
+    """Completion timestamps of existing analyses, per gear and acquisition.
+
+    ``results[gear_name][(subject, session, acquisition)]`` is the job's
+    completion time, or ``None`` if no analysis has completed successfully
+    (this includes analyses that failed or are still running).
+    """
+
+    def __init__(self, fc: FlywheelConnector):
+        self._fc = fc
+        self._label_cache: dict = {}
+        self.results: dict = {}
+
+        analyses = fc.rest_client.get(f"/api/projects/{fc.project.id}/all/analyses")
+
+        for analysis in analyses:
+            gear_info = analysis.get("gear_info")
+            job_id = analysis.get("job")
+            if not gear_info or not job_id:
+                # e.g. uploaded analyses that were not produced by a gear job
+                continue
+
+            parents = analysis.get("parents") or {}
+            key = (
+                self._label("subjects", parents.get("subject")),
+                self._label("sessions", parents.get("session")),
+                self._label("acquisitions", parents.get("acquisition")),
+            )
+
+            job = fc.rest_client.get(f"/api/jobs/{job_id}")
+            finished = (job.get("transitions") or {}).get("complete")
+
+            per_gear = self.results.setdefault(gear_info.get("name"), {})
+            if per_gear.get(key) is None:
+                per_gear[key] = finished
+
+    def _label(self, kind: str, obj_id) -> str:
+        """Return the label of a subject/session/acquisition, with caching."""
+        if obj_id is None:
+            return "None"
+        cache_key = (kind, obj_id)
+        if cache_key not in self._label_cache:
+            obj = self._fc.rest_client.get(f"/api/{kind}/{obj_id}")
+            self._label_cache[cache_key] = obj.label
+        return self._label_cache[cache_key]
+
+    def for_gear(self, gear_name: str) -> dict:
+        return self.results.get(gear_name, {})
+
+
+###############################################################################
+# Gear tools
+###############################################################################
+
+
+class GearTool:
+    """Base wrapper for launching a gear as an analysis on an acquisition."""
+
+    gear_name: str = ""
+    qsm_inputs: list = []
+
+    def __init__(self, fc: FlywheelConnector, label: str):
+        self.fc = fc
+        self.label = label
+        self.inputs: dict = {}
+        self.inputs_names: list = []
+        self.config: dict = {}
+        self.destination = None
+        self.destination_name = ""
+        self.job_id = ""
+        self._qsm_input_index = 0
+
+    @classmethod
+    def max_qsm_inputs(cls) -> int:
+        return len(cls.qsm_inputs)
+
+    def add_qsm_input(self, file_info: "FileInfo") -> None:
+        slot = self.qsm_inputs[self._qsm_input_index]
+        self.inputs[slot] = file_info.file
+        self.inputs_names.append(file_info.file_name)
+        self._qsm_input_index += 1
+        self.destination = self.fc.sdk_client.get(file_info.acquisition_id)
+        self.destination_name = file_info.acquisition
+
+    def set_structural(self, file_info: "FileInfo") -> None:
+        """Hook for gears that accept a structural image (default: ignore)."""
+
+    def add_config(self, tag: str, value) -> None:
+        self.config[tag] = value
+
+    def run(self) -> None:
+        gear = self.fc.sdk_client.lookup(f"gears/{self.gear_name}")
+        stamp = datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+        analysis_label = f"{self.gear_name} {stamp}"
+        logger.info(
+            "%s, %s, %s, %s, %s, %s",
+            self.label,
+            analysis_label,
+            self.gear_name,
+            self.inputs_names,
+            self.config,
+            self.destination_name,
+        )
+        self.job_id = gear.run(
+            analysis_label=analysis_label,
+            inputs=self.inputs,
+            config=self.config,
+            destination=self.destination,
+        )
+        logger.info("job_id: %s", self.job_id)
+
+
+class QSMxTGearTool(GearTool):
+    gear_name = "qsmxt"
+    qsm_inputs = ["input_file", "input_file_opt", "input_file_opt2"]
+
+    def set_structural(self, file_info: "FileInfo") -> None:
+        self.inputs["anatomical"] = file_info.file
+        self.inputs_names.append(file_info.file_name)
+        self.add_config("premade", "bet")
+
+
+class QSMMediGearTool(GearTool):
+    gear_name = "qsm-medi"
+    qsm_inputs = ["input_file", "input_file_opt"]
+
+
+###############################################################################
+# Acquisition Classification and Launch
+###############################################################################
+
+
+@dataclass
+class FileInfo:
+    subject: str
+    session: str
+    acquisition: str
+    acquisition_id: str
+    file: object = field(repr=False)
+    file_name: str
+    intent: str | None
+
+
+def _first_intent(classification) -> str | None:
+    intent = (classification or {}).get("Intent")
+    return intent[0] if intent else None
+
+
+class AcquisitionClassification:
+    """Indexes project files by acquisition and launches the enabled gears."""
+
+    def __init__(self, fc: FlywheelConnector, config: dict):
+        self.fc = fc
+        self.process_all = config.get("process_all")
+        self.do_qsmxt = config.get("do_qsmxt")
+        self.do_qsm_medi = config.get("do_qsm_medi")
+
+        # (subject, session, acquisition) -> [FileInfo, ...]
+        self.acquisitions: dict[AcqKey, list[FileInfo]] = {}
+
+        for subject in fc.project.subjects.iter():
+            for session in subject.sessions.iter():
+                for acquisition in session.acquisitions.iter():
+                    key = (subject.label, session.label, acquisition.label)
+                    self.acquisitions[key] = [
+                        FileInfo(
+                            subject=subject.label,
+                            session=session.label,
+                            acquisition=acquisition.label,
+                            acquisition_id=acquisition.id,
+                            file=file,
+                            file_name=file.name,
+                            intent=_first_intent(file.classification),
+                        )
+                        for file in acquisition.files
+                    ]
+
+    def launch_gears(self, analyses: AnalysisResults) -> None:
+        for key, files in self.acquisitions.items():
+            qsm_files = [f for f in files if f.intent == "QSM"]
+            if not qsm_files:
+                continue
+            structural = next((f for f in files if f.intent == "Structural"), None)
+            label = "/".join(key)
+
+            self._launch(QSMxTGearTool, self.do_qsmxt, key, label, qsm_files,
+                         structural, analyses)
+            self._launch(QSMMediGearTool, self.do_qsm_medi, key, label, qsm_files,
+                         structural, analyses)
+
+    def _should_run(self, tool_cls, enabled, key, analyses: AnalysisResults) -> bool:
+        if not enabled:
+            return False
+        if self.process_all:
+            return True
+        # Not analyzed yet, or no analysis has completed
+        return analyses.for_gear(tool_cls.gear_name).get(key) is None
+
+    def _launch(self, tool_cls, enabled, key, label, qsm_files, structural, analyses):
+        if not self._should_run(tool_cls, enabled, key, analyses):
+            return
+        if len(qsm_files) > tool_cls.max_qsm_inputs():
+            logger.warning(
+                "Skipping %s for %s: %d QSM files, gear accepts at most %d",
+                tool_cls.gear_name, label, len(qsm_files), tool_cls.max_qsm_inputs(),
+            )
+            return
+
+        tool = tool_cls(self.fc, label)
+        if structural:
+            tool.set_structural(structural)
+        for file_info in qsm_files:
+            tool.add_qsm_input(file_info)
+        tool.run()
+
+
+###############################################################################
+# Main
+###############################################################################
+
+
+def main() -> None:
+    context = flywheel.GearContext()
+    config_opts = context.config
+
+    analysis = context.client.get_analysis(context.destination["id"])
+    project_id = analysis.parent["id"]
+
+    api_key_input = context.get_input("api-key")
+    api_key = api_key_input["key"] if api_key_input else None
+    if not api_key:
+        raise ValueError("The 'api-key' gear input is required")
+
+    fc = FlywheelConnector(api_key)
+    fc.set_project_by_id(project_id)
+
+    analyses = AnalysisResults(fc)
+    classification = AcquisitionClassification(fc, config_opts)
+    classification.launch_gears(analyses)
+
+
+if __name__ == "__main__":
+    main()
