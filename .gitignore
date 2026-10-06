@@ -219,4 +219,7 @@ __marimo__/
 *.conf
 !*.conf.example
 
+# macOS
+.DS_Store
+
 

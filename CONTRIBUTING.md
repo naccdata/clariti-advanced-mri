@@ -133,6 +133,31 @@ manifest sanity-check steps catch the version and `gear-builder.image` tag, but
 `private` is not gated — and an `exchange` block would fail the deploy later at
 `flyw gear upload` (manifest validation), so strip it here.
 
+### Drop junk files that come down from upstream
+
+Upstream history sometimes carries files that should never live in the fork:
+OS cruft (`.DS_Store`, `Thumbs.db`), editor/tooling leftovers, and scratch or
+backup copies of source (for example `run - Copy.py`, `*.bak`, `*.orig`,
+`*~`). A downstream merge will happily bring these in. The fork does not want
+them regardless of where they originate.
+
+After each pull, before pushing the sync branch, remove any such files the merge
+introduced and keep them out of the fork:
+
+```sh
+# review what the sync is about to add
+git diff --stat main...sync-upstream
+
+# drop OS cruft and obvious scratch/backup files it pulled in, e.g.
+git rm --cached -r --ignore-unmatch '**/.DS_Store' 'ProcessManager/run - Copy.py'
+```
+
+Prefer fixing the root cause upstream too (a `.gitignore` entry and removing the
+tracked file in an upstream PR, as was done for the ASL gear `.DS_Store` files),
+so the junk stops arriving on future pulls. Until that lands, dropping it during
+the sync is the standing rule — a sync branch is allowed to omit upstream junk,
+and this is the one documented exception to mirroring upstream content faithfully.
+
 ## Deployment
 
 Deployment is a fork-only concern and is intentionally guarded so the deploy
