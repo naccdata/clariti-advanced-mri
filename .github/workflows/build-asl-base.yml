@@ -1,0 +1,111 @@
+name: Build ASL base image
+
+# Fork-only build infrastructure (NOT a deployed gear).
+#
+# Builds asl-base/Dockerfile — the heavy, gear-agnostic layer shared by the two
+# ASL gears (ASLscp/, GEASLscp/) — and pushes it to ECR clariti/asl-base with
+# BuildKit registry layer caching. This is the fork's build concern only; it
+# never flows upstream. It is deliberately SIMPLER than deploy-qsm-medi.yml:
+# no Flywheel upload, no sandbox/production promotion, no SSM gearbot keys, and
+# no manifest/version-consistency checks (the base image has no manifest).
+#
+# After a successful run, copy the pushed digest (surfaced in the job output and
+# logs) into the FROM line of BOTH gear Dockerfiles. That gear FROM-line change
+# is upstream-bound gear source (separate upstream PR); this workflow is not.
+#
+# Triggers are deliberate, never automatic on gear-dir pushes: an `asl-base-v*`
+# tag or a manual dispatch drives a build.
+#
+# INFRA PREREQUISITES (must be provisioned before this workflow can succeed) —
+# this base image is a NEW entry not yet captured in
+# scratch/gear-deploy-aws-requirements.md:
+#   - ECR repo `clariti/asl-base` in the shared-services account 380366436539,
+#     us-west-2 (Terraform).
+#   - IAM push role `clariti-asl-base-push` with an OIDC trust policy scoped to
+#     the subject `repo:naccdata/clariti-advanced-mri:environment:asl-base-sandbox`
+#     (Terraform). Permissions: ECR push/pull for clariti/asl-base.
+#   - GitHub environment `asl-base-sandbox` in this fork (no promotion split is
+#     needed since nothing is published to Flywheel; it exists only to scope the
+#     OIDC subject claim).
+#   - The `:buildcache` tag on clariti/asl-base MUST be MUTABLE (excluded from
+#     ECR tag immutability) so `--cache-to` can overwrite it on every run.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'asl-base-v*'
+
+permissions:
+  id-token: write   # required for AWS OIDC federation
+  contents: read
+
+env:
+  # Shared-services account 380366436539, us-west-2. ECR repo and OIDC role
+  # provisioned via Terraform (see scratch/gear-deploy-aws-requirements.md; this
+  # base image is a new entry not yet in that doc).
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 380366436539.dkr.ecr.us-west-2.amazonaws.com
+  ECR_REPOSITORY: clariti/asl-base
+  AWS_PUSH_ROLE_ARN: arn:aws:iam::380366436539:role/clariti-asl-base-push
+
+jobs:
+  build-base:
+    if: github.repository == 'naccdata/clariti-advanced-mri'
+    runs-on: ubuntu-latest  # native x86_64; base FROM is --platform=linux/amd64
+    environment: asl-base-sandbox  # fork-only env; scopes the OIDC subject claim
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The FreeSurfer/FSL/ANTs layers are large; ubuntu-latest needs headroom.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_PUSH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build the base once and push it to ECR with registry layer caching.
+      # The TAG is derived from the pushed git tag (`asl-base-v<x>` -> `<x>`) or
+      # a UTC timestamp on manual dispatch. The pushed digest is recorded in the
+      # job output and logs so it can be copied into both gear Dockerfiles' FROM
+      # lines. The `:buildcache` tag must be mutable (see header) for --cache-to.
+      - name: Build and push base image (linux/amd64)
+        id: build
+        working-directory: asl-base
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME#asl-base-v}"
+          else
+            TAG="$(date -u +%Y%m%d%H%M%S)"
+          fi
+          repo="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+          echo "Building asl-base with tags :latest and :${TAG}"
+
+          docker buildx build \
+            --platform linux/amd64 \
+            --push \
+            --cache-from "type=registry,ref=${repo}:buildcache" \
+            --cache-to "type=registry,ref=${repo}:buildcache,mode=max" \
+            --metadata-file /tmp/build-meta.json \
+            -t "${repo}:latest" \
+            -t "${repo}:${TAG}" \
+            .
+
+          digest=$(jq -r '."containerimage.digest"' /tmp/build-meta.json)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${ECR_REPOSITORY}:${TAG} (also :latest)"
+          echo "Base image digest: ${ECR_REPOSITORY}@${digest}"
+          echo "Copy this digest into the FROM line of ASLscp/Dockerfile and GEASLscp/Dockerfile."
