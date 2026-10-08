@@ -1,0 +1,68 @@
+# Pipeline Manager (QSM)
+
+A Flywheel gear that scans a project and launches the **QSMxT** and **QSM-MEDI** gears on every acquisition that contains QSM input files. It is meant to be run as a project-level analysis, and it can be re-run safely to pick up acquisitions that have not been processed yet.
+
+## How it works
+
+1. The gear finds the project it was launched from and connects with the supplied API key.
+2. It reads all existing analyses in the project and records, for each gear and acquisition, whether a completed analysis exists.
+3. It walks every subject, session and acquisition and reads each file's classification.
+4. For each acquisition that contains at least one file with **Intent = QSM**, it decides whether to launch each enabled gear (see [Rerun behavior](#rerun-behavior)) and starts a new analysis on that acquisition.
+
+The gear only launches jobs. It does not wait for them or collect their results.
+
+## Inputs
+
+| Name | Type | Description |
+|---|---|---|
+| `api-key` | API key | Flywheel API key used to query the project and launch gears. The key's user needs read access to the project and permission to run the target gears. |
+
+## Configuration
+
+| Option | Type | Description |
+|---|---|---|
+| `do_qsmxt` | boolean | Launch the `qsmxt` gear on eligible acquisitions. |
+| `do_qsm_medi` | boolean | Launch the `qsm-medi` gear on eligible acquisitions. |
+| `process_all` | boolean | Launch every enabled gear on every eligible acquisition, even if a completed analysis already exists. |
+
+## Required file classification
+
+Files must be classified in Flywheel before running. Only the first value of the **Intent** classification is used:
+
+| Intent | Used as |
+|---|---|
+| `QSM` | QSM input file for the gears |
+| `Structural` | Anatomical image (QSMxT only) |
+
+Files with any other intent, or no classification, are ignored.
+
+## Gears launched
+
+| Gear | Max QSM inputs | Input slots (in order) | Extra behavior |
+|---|---|---|---|
+| `qsmxt` | 3 | `input_file`, `input_file_opt`, `input_file_opt2` | If a Structural file exists, it is passed as `anatomical` and `premade` is set to `bet`. |
+| `qsm-medi` | 2 | `input_file`, `input_file_opt` | Structural files are not used. |
+
+QSM files are assigned to input slots in the order they are found in the acquisition. If an acquisition has more QSM files than a gear has slots, that gear is skipped for the acquisition and a warning is logged. If an acquisition has more than one Structural file, the first is used.
+
+Each analysis is created on the acquisition containing the QSM files and labeled `<gear name> MM/DD/YYYY, HH:MM:SS`.
+
+## Rerun behavior
+
+For each enabled gear and eligible acquisition:
+
+- With `process_all` enabled, the gear always runs.
+- Otherwise, the gear runs only if no **completed** analysis of that gear exists for the acquisition. Acquisitions that were never analyzed, or whose analyses failed, are launched.
+
+Note that an analysis that is still running or pending does not count as completed, so rerunning the manager while jobs are in progress can launch duplicates. Wait for running jobs to finish before rerunning.
+
+## Logging
+
+Progress is written to stdout: the project name, and for each launch the acquisition, analysis label, gear, input file names, config and resulting job ID. Skipped acquisitions and unreadable data are reported as warnings.
+
+## Limitations
+
+- Requires all target gears (`qsmxt`, `qsm-medi`) to be installed and visible to the API key's user.
+- Acquisitions are matched to existing analyses by subject, session and acquisition label, so labels should be unique within a session.
+- Analyses that were uploaded rather than produced by a gear job are ignored when checking for previous results.
+- Depends on the `flywheel-sdk` and `fw-client` packages.
