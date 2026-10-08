@@ -10,11 +10,15 @@
 # ASLscp/ and GEASLscp/ must FROM the same digest and stay byte-identical.
 FROM 380366436539.dkr.ecr.us-west-2.amazonaws.com/clariti/asl-base@sha256:PLACEHOLDER_REPLACE_AFTER_FIRST_BASE_PUSH
 
-# Copy files and set permissions
+# Copy files and give the non-root flywheel user (created in the base) ownership
+# of the gear tree, then drop to that user.
 COPY ./input/ ${FLYWHEEL}/input/
 COPY ./workflows/ ${FLYWHEEL}/workflows/
 COPY ./pipeline_singlePLD.sh ${FLYWHEEL}/
-RUN chmod -R 777 ${FLYWHEEL}
+RUN chmod -R u+rwX ${FLYWHEEL} && chown -R flywheel:flywheel ${FLYWHEEL}
+
+# Run as the non-root user
+USER flywheel
 
 # Set entrypoint
 ENTRYPOINT ["/bin/bash", "/flywheel/v0/pipeline_singlePLD.sh"]
