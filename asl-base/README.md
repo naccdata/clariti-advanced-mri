@@ -16,12 +16,27 @@ Extracted verbatim from the ASL gears' common Dockerfile head:
 - **FSL 6.0.7.1** - motion correction, image math, registration tools
 - **ANTs 2.5.4** - nonlinear registration
 - **dcm2niix** - DICOM to NIfTI conversion
-- **Python 3** deps: scipy, nibabel, matplotlib, transforms3d, flywheel-sdk,
-  aspose-words, reportlab, nilearn, with NumPy pinned to `<2.0.0`
+- **Python 3** deps, pinned to validated versions: `numpy==1.26.4` (1.x ABI
+  required by the pipeline), `scipy==1.15.3`, `nibabel==5.4.2`,
+  `matplotlib==3.10.9`, `fw-gear[sdk]==0.3.7`, `reportlab==5.0.1`,
+  `nilearn==0.14.1`
 - The shared ENV (FreeSurfer/FSL/ANTs paths, `FLYWHEEL=/flywheel/v0`, FSL and
   thread/OMP vars) and the apt layer
+- A non-root `flywheel` user and group (created here but not switched to): the
+  base ends as root so each gear wrapper can COPY its source and chown the tree
 
-Base: `ubuntu:22.04` (`--platform=linux/amd64`), matching the gears exactly.
+## User / permissions model
+
+Security review requires the gears to run non-root. The division is:
+
+- **Base** creates the `flywheel` user/group but stays root at its end, so the
+  gear wrappers can still COPY source and change ownership.
+- **Each gear wrapper** copies its source, runs
+  `chmod -R u+rwX ${FLYWHEEL} && chown -R flywheel:flywheel ${FLYWHEEL}`, then
+  `USER flywheel` before its entrypoint. No `chmod 777`, no root at runtime.
+
+Base: `ubuntu:22.04` pinned by digest (`--platform=linux/amd64`), matching the
+gears exactly.
 
 ## ECR location
 
