@@ -68,8 +68,12 @@ if len(list_series_num) != 1:
     )
     print("----------------------------------------------------------------")
 
-# Find the common prefix from the nii files
-common_prefix = os.path.commonprefix(list_files_nii)
+# Find the common prefix from the nii files. commonprefix's character-by-
+# character (string) behavior is intentional here: these are sibling filenames
+# that share a leading substring (e.g. "sub01_echo"), not a path hierarchy, and
+# the prefix is used below as a filename-matching pattern. commonpath would be
+# semantically wrong (it works on path components), so RUF071 is suppressed.
+common_prefix = os.path.commonprefix(list_files_nii)  # noqa: RUF071
 if not common_prefix and common_prefix_config is None:
     raise ValueError(
         "ERROR: No common base name found among the provided paths. "

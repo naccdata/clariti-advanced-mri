@@ -158,6 +158,39 @@ so the junk stops arriving on future pulls. Until that lands, dropping it during
 the sync is the standing rule — a sync branch is allowed to omit upstream junk,
 and this is the one documented exception to mirroring upstream content faithfully.
 
+### Preserve the fork's `test-qsm-medi.yml` gate design
+
+Shared CI is normally taken from upstream wholesale on a pull-down. The one
+exception is `.github/workflows/test-qsm-medi.yml`: the fork deliberately
+diverges it, and an upstream pull can silently revert that divergence (upstream
+carries a simpler version) — the same class of trap as the manifest deploy
+fields above.
+
+The fork's version uses a three-job design: `changes` → `test` → `gate`.
+
+- Branch protection on the fork's `main` requires the **`gate`** status check,
+  not `test`.
+- `gate` has `if: always()` and runs on every PR, so it always reports a status.
+  It passes when `test` succeeded OR was skipped, and fails only when `test` ran
+  and failed.
+- `test` is the expensive job and only runs when `qsm-medi/**` (or the workflow
+  itself) changes, gated by the `changes` job.
+
+Upstream's version instead puts a `paths:` filter directly on the `pull_request`
+trigger and has only a `test` job (no `gate`). If that version lands on the
+fork, any PR that does not touch `qsm-medi/**` never reports `gate`, so the
+required check sits at "Expected — waiting for status to be reported" forever and
+the PR cannot merge. (This is exactly what the three-job design was built to
+avoid.)
+
+So after every upstream pull, confirm `test-qsm-medi.yml` still has the `gate`
+job. If the merge took upstream's version, restore the fork's:
+
+```sh
+git checkout main -- .github/workflows/test-qsm-medi.yml   # from the fork's main
+grep -q 'gate:' .github/workflows/test-qsm-medi.yml || echo "MISSING gate job!"
+```
+
 ## Deployment
 
 Deployment is a fork-only concern and is intentionally guarded so the deploy
