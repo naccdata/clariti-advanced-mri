@@ -229,3 +229,7 @@ __marimo__/
 .DS_Store
 
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
