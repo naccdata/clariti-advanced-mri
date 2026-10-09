@@ -224,12 +224,3 @@ __marimo__/
 # Project-specific
 *.conf
 !*.conf.example
-
-# macOS
-.DS_Store
-
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
