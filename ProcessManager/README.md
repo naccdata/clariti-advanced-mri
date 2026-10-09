@@ -9,7 +9,7 @@ A Flywheel gear that scans a project and launches the **QSMxT** and **QSM-MEDI**
 3. It walks every subject, session and acquisition and reads each file's classification.
 4. For each acquisition that contains at least one file with **Intent = QSM**, it decides whether to launch each enabled gear (see [Rerun behavior](#rerun-behavior)) and starts a new analysis on that acquisition.
 
-The gear only launches jobs. It does not wait for them or collect their results.
+The gear only launches jobs. It does not wait for them or collect their results. If a single gear launch fails with a Flywheel API error, that one launch is logged (with the gear name and acquisition) and skipped; the scan continues with the remaining acquisitions rather than aborting the whole run.
 
 ## Inputs
 

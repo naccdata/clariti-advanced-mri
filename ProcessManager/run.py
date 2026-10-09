@@ -361,12 +361,22 @@ class AcquisitionClassification:
             )
             return
 
-        tool = tool_cls(self.fc, label)
-        if structural:
-            tool.set_structural(structural)
-        for file_info in qsm_files:
-            tool.add_qsm_input(file_info)
-        tool.run()
+        # Guard this single gear-launch attempt (SDK get/lookup/run for one
+        # gear on one acquisition) so a transient Flywheel API failure is
+        # logged and skipped rather than aborting the whole project scan. The
+        # loop in launch_gears then proceeds to the next gear/acquisition.
+        try:
+            tool = tool_cls(self.fc, label)
+            if structural:
+                tool.set_structural(structural)
+            for file_info in qsm_files:
+                tool.add_qsm_input(file_info)
+            tool.run()
+        except flywheel.rest.ApiException:
+            logger.exception(
+                "Skipping %s launch for %s: Flywheel API error",
+                tool_cls.gear_name, label,
+            )
 
 
 ###############################################################################
