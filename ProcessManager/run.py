@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 import flywheel
 from fw_client import FWClient
+from fw_gear.context import GearContext
 
 ###############################################################################
 # Logging Setup
@@ -30,18 +31,23 @@ logger.addHandler(_handler)
 
 
 class FlywheelConnector:
-    """Holds the REST and SDK clients plus the project being processed."""
+    """Holds the REST and SDK clients plus the project being processed.
 
-    def __init__(self, api_key: str):
+    The SDK client is provided by the gear context (``fw-gear`` builds it from
+    the ``api-key`` input). The raw REST client is created here from the same
+    API key, since ``fw-gear`` does not expose one.
+    """
+
+    def __init__(self, sdk_client: flywheel.Client, api_key: str):
         self.api_key = api_key
         self.project = None
         self.rest_client = FWClient(api_key=api_key)
-        self.sdk_client = flywheel.Client(api_key)
+        self.sdk_client = sdk_client
 
     def set_project_by_id(self, project_id: str) -> None:
         try:
             self.project = self.sdk_client.get_project(project_id)
-        except Exception:
+        except flywheel.rest.ApiException:
             logger.exception("Cannot fetch project '%s' via SDK", project_id)
             raise
         logger.info("Project set: %s", self.project.label)
@@ -275,19 +281,24 @@ class AcquisitionClassification:
 ###############################################################################
 
 
-def main() -> None:
-    context = flywheel.GearContext()
-    config_opts = context.config
+def _get_api_key(context: GearContext) -> str:
+    """Return the API key supplied via the gear's ``api-key`` input."""
+    for inp in context.config.inputs.values():
+        if inp.get("base") == "api-key" and inp.get("key"):
+            return inp["key"]
+    raise ValueError("The 'api-key' gear input is required")
 
-    analysis = context.client.get_analysis(context.destination["id"])
+
+def main(context: GearContext) -> None:
+    config_opts = context.config.opts
+
+    sdk_client = context.client
+    analysis = sdk_client.get_analysis(context.config.destination["id"])
     project_id = analysis.parent["id"]
 
-    api_key_input = context.get_input("api-key")
-    api_key = api_key_input["key"] if api_key_input else None
-    if not api_key:
-        raise ValueError("The 'api-key' gear input is required")
+    api_key = _get_api_key(context)
 
-    fc = FlywheelConnector(api_key)
+    fc = FlywheelConnector(sdk_client, api_key)
     fc.set_project_by_id(project_id)
 
     analyses = AnalysisResults(fc)
@@ -296,4 +307,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    with GearContext() as gear_context:
+        main(gear_context)
