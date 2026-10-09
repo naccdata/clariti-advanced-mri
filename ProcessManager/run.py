@@ -18,7 +18,7 @@ from fw_gear.context import GearContext
 # Logging Setup
 ###############################################################################
 
-logger = logging.getLogger("fw_uploader")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 _handler = logging.StreamHandler(sys.stdout)
@@ -60,12 +60,19 @@ class FlywheelConnector:
 AcqKey = tuple  # (subject label, session label, acquisition label)
 
 
-class AnalysisResults:
-    """Completion timestamps of existing analyses, per gear and acquisition.
+#: Job states that mean an analysis is finished or still in flight, so the
+#: gear should not launch a duplicate for the same acquisition.
+_IN_PROGRESS_STATES = ("pending", "running")
 
-    ``results[gear_name][(subject, session, acquisition)]`` is the job's
-    completion time, or ``None`` if no analysis has completed successfully
-    (this includes analyses that failed or are still running).
+
+class AnalysisResults:
+    """Existing analyses that are completed or in progress, per gear/acquisition.
+
+    ``results[gear_name][(subject, session, acquisition)]`` is a non-``None``
+    marker when an analysis of that gear is already **completed** (the job's
+    completion time) or **in progress** (its ``pending``/``running`` state).
+    It is ``None`` when no such analysis exists (this includes analyses that
+    failed or were cancelled, which may be relaunched).
     """
 
     def __init__(self, fc: FlywheelConnector):
@@ -91,10 +98,16 @@ class AnalysisResults:
 
             job = fc.rest_client.get(f"/api/jobs/{job_id}")
             finished = (job.get("transitions") or {}).get("complete")
+            # Treat still-running/pending jobs as "already processed" too, so
+            # rerunning mid-flight does not launch duplicate analyses. Use the
+            # job state as the marker when no completion time is available.
+            marker = finished or (
+                job.get("state") if job.get("state") in _IN_PROGRESS_STATES else None
+            )
 
             per_gear = self.results.setdefault(gear_info.get("name"), {})
             if per_gear.get(key) is None:
-                per_gear[key] = finished
+                per_gear[key] = marker
 
     def _label(self, kind: str, obj_id) -> str:
         """Return the label of a subject/session/acquisition, with caching."""
@@ -255,7 +268,7 @@ class AcquisitionClassification:
             return False
         if self.process_all:
             return True
-        # Not analyzed yet, or no analysis has completed
+        # Not analyzed yet, or no completed/in-progress analysis exists
         return analyses.for_gear(tool_cls.gear_name).get(key) is None
 
     def _launch(self, tool_cls, enabled, key, label, qsm_files, structural, analyses):

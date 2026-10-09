@@ -5,7 +5,7 @@ A Flywheel gear that scans a project and launches the **QSMxT** and **QSM-MEDI**
 ## How it works
 
 1. The gear finds the project it was launched from and connects with the supplied API key.
-2. It reads all existing analyses in the project and records, for each gear and acquisition, whether a completed analysis exists.
+2. It reads all existing analyses in the project and records, for each gear and acquisition, whether a completed or in-progress (running/pending) analysis exists.
 3. It walks every subject, session and acquisition and reads each file's classification.
 4. For each acquisition that contains at least one file with **Intent = QSM**, it decides whether to launch each enabled gear (see [Rerun behavior](#rerun-behavior)) and starts a new analysis on that acquisition.
 
@@ -52,9 +52,9 @@ Each analysis is created on the acquisition containing the QSM files and labeled
 For each enabled gear and eligible acquisition:
 
 - With `process_all` enabled, the gear always runs.
-- Otherwise, the gear runs only if no **completed** analysis of that gear exists for the acquisition. Acquisitions that were never analyzed, or whose analyses failed, are launched.
+- Otherwise, the gear runs only if no **completed** and no **in-progress** (running or pending) analysis of that gear exists for the acquisition. Acquisitions that were never analyzed, or whose analyses failed or were cancelled, are launched.
 
-Note that an analysis that is still running or pending does not count as completed, so rerunning the manager while jobs are in progress can launch duplicates. Wait for running jobs to finish before rerunning.
+Because running and pending jobs count as "already processed", rerunning the manager while jobs are in progress does not launch duplicates for those acquisitions.
 
 ## Logging
 
