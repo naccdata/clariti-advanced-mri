@@ -60,19 +60,32 @@ class FlywheelConnector:
 AcqKey = tuple  # (subject label, session label, acquisition label)
 
 
-#: Job states that mean an analysis is finished or still in flight, so the
-#: gear should not launch a duplicate for the same acquisition.
+#: Canonical Flywheel job states. Source of truth is
+#: ``flywheel.models.job_state.JobState`` (flywheel-sdk 22.4.0: a ``str``-enum
+#: with exactly five values ``pending, running, failed, complete, cancelled``;
+#: no ``held`` and no ``retried`` state). "retried" is derived at runtime from a
+#: ``failed`` job whose ``retried`` timestamp is set and whose successor is found
+#: via ``previous_job_id``. Kept as validated string literals (not the enum
+#: import) to match the raw-REST job dicts read here and the in-house JobPoll
+#: pattern this logic is ported from.
+_STATE_COMPLETE = "complete"
 _IN_PROGRESS_STATES = ("pending", "running")
+
+#: Maximum number of retries Flywheel performs for a job, bounding how far the
+#: retry chain is followed (mirrors ``JobPoll.is_job_complete``).
+_MAX_JOB_RETRIES = 3
 
 
 class AnalysisResults:
     """Existing analyses that are completed or in progress, per gear/acquisition.
 
     ``results[gear_name][(subject, session, acquisition)]`` is a non-``None``
-    marker when an analysis of that gear is already **completed** (the job's
-    completion time) or **in progress** (its ``pending``/``running`` state).
-    It is ``None`` when no such analysis exists (this includes analyses that
-    failed or were cancelled, which may be relaunched).
+    marker when an analysis of that gear is already **completed** (job state is
+    ``complete``) or **in progress** (its ``pending``/``running`` state),
+    following any retry chain so a failed-and-retried job is judged by its
+    successor's state. It is ``None`` when no such analysis exists (this
+    includes analyses whose final job failed or was cancelled with no live
+    retry, which may be relaunched).
     """
 
     def __init__(self, fc: FlywheelConnector):
@@ -96,18 +109,84 @@ class AnalysisResults:
                 self._label("acquisitions", parents.get("acquisition")),
             )
 
-            job = fc.rest_client.get(f"/api/jobs/{job_id}")
-            finished = (job.get("transitions") or {}).get("complete")
-            # Treat still-running/pending jobs as "already processed" too, so
-            # rerunning mid-flight does not launch duplicate analyses. Use the
-            # job state as the marker when no completion time is available.
-            marker = finished or (
-                job.get("state") if job.get("state") in _IN_PROGRESS_STATES else None
-            )
+            marker = self._dedup_marker(job_id)
 
             per_gear = self.results.setdefault(gear_info.get("name"), {})
             if per_gear.get(key) is None:
                 per_gear[key] = marker
+
+    def _dedup_marker(self, job_id: str):
+        """Return a non-``None`` marker if the analysis is done or in flight.
+
+        The decision is keyed on the job **state** (``complete`` or
+        ``pending``/``running``), not on the presence of a
+        ``transitions.complete`` timestamp. A ``failed`` job that Flywheel has
+        retried is followed to its successor via ``previous_job_id`` (ported
+        from ``JobPoll.is_job_complete``), so a retried-and-still-running or
+        retried-and-complete analysis is treated as already processed and is
+        not relaunched as a duplicate. A final state of ``failed`` or
+        ``cancelled`` with no live retry returns ``None`` (relaunchable).
+        """
+        state = self._final_job_state(job_id)
+        if state == _STATE_COMPLETE or state in _IN_PROGRESS_STATES:
+            return state
+        return None
+
+    def _final_job_state(self, job_id: str):
+        """Resolve a job's effective state, following any retry chain.
+
+        While the current job is ``failed`` and has been retried
+        (``retried`` timestamp set), hop forward to the successor job
+        (``previous_job_id="<id>"``), bounded to the Flywheel retry maximum.
+        Returns the state string of the final job in the chain, or ``None`` if
+        the original job cannot be read.
+        """
+        job = self._get_job(job_id)
+        if job is None:
+            return None
+
+        hops = 0
+        while (
+            self._job_state(job) == "failed"
+            and self._job_retried(job) is not None
+            and hops < _MAX_JOB_RETRIES
+        ):
+            successor = self._find_successor(self._job_id(job))
+            if successor is None:
+                # Marked retried but successor not found; stop and use this state.
+                break
+            job = successor
+            hops += 1
+
+        return self._job_state(job)
+
+    def _get_job(self, job_id: str):
+        """Fetch a job by id via the SDK ``jobs`` finder (typed ``Job``)."""
+        try:
+            return self._fc.sdk_client.jobs.find_first(f"_id={job_id}")
+        except flywheel.rest.ApiException:
+            logger.exception("Cannot fetch job '%s'", job_id)
+            return None
+
+    def _find_successor(self, job_id: str):
+        """Find the job that superseded ``job_id`` when it was retried."""
+        try:
+            return self._fc.sdk_client.jobs.find_first(f'previous_job_id="{job_id}"')
+        except flywheel.rest.ApiException:
+            logger.exception("Cannot look up retry successor of job '%s'", job_id)
+            return None
+
+    @staticmethod
+    def _job_state(job):
+        return getattr(job, "state", None)
+
+    @staticmethod
+    def _job_retried(job):
+        return getattr(job, "retried", None)
+
+    @staticmethod
+    def _job_id(job):
+        return getattr(job, "id", None)
 
     def _label(self, kind: str, obj_id) -> str:
         """Return the label of a subject/session/acquisition, with caching."""
@@ -269,6 +348,7 @@ class AcquisitionClassification:
         if self.process_all:
             return True
         # Not analyzed yet, or no completed/in-progress analysis exists
+        # (in-progress now including a failed job whose retry is still running).
         return analyses.for_gear(tool_cls.gear_name).get(key) is None
 
     def _launch(self, tool_cls, enabled, key, label, qsm_files, structural, analyses):

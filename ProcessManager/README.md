@@ -5,7 +5,7 @@ A Flywheel gear that scans a project and launches the **QSMxT** and **QSM-MEDI**
 ## How it works
 
 1. The gear finds the project it was launched from and connects with the supplied API key.
-2. It reads all existing analyses in the project and records, for each gear and acquisition, whether a completed or in-progress (running/pending) analysis exists.
+2. It reads all existing analyses in the project and records, for each gear and acquisition, whether a completed (job state `complete`) or in-progress (running/pending) analysis exists. If an analysis's job failed and Flywheel retried it, the retry chain is followed so the decision reflects the successor job's state.
 3. It walks every subject, session and acquisition and reads each file's classification.
 4. For each acquisition that contains at least one file with **Intent = QSM**, it decides whether to launch each enabled gear (see [Rerun behavior](#rerun-behavior)) and starts a new analysis on that acquisition.
 
@@ -52,9 +52,9 @@ Each analysis is created on the acquisition containing the QSM files and labeled
 For each enabled gear and eligible acquisition:
 
 - With `process_all` enabled, the gear always runs.
-- Otherwise, the gear runs only if no **completed** and no **in-progress** (running or pending) analysis of that gear exists for the acquisition. Acquisitions that were never analyzed, or whose analyses failed or were cancelled, are launched.
+- Otherwise, the gear runs only if no **completed** (job state `complete`) and no **in-progress** (running or pending) analysis of that gear exists for the acquisition. Acquisitions that were never analyzed, or whose final job failed or was cancelled with no live retry, are launched.
 
-Because running and pending jobs count as "already processed", rerunning the manager while jobs are in progress does not launch duplicates for those acquisitions.
+Because running and pending jobs count as "already processed", rerunning the manager while jobs are in progress does not launch duplicates for those acquisitions. A failed job that Flywheel has retried is followed to its successor, so a failed-then-retried analysis that is still running (or has since completed) is also treated as already processed and is not relaunched.
 
 ## Logging
 
